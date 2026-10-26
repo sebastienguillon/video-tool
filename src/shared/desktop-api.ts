@@ -67,7 +67,24 @@ export interface DesktopBridge {
   readonly chooseOutputFolder: () => Promise<string | null>;
 }
 
-/** `invoke` channels (renderer → main) and `send` channels (main → renderer). */
+/**
+ * macOS only: a wheel event that zooms, which the preload sends on `IpcChannel.wheelZoom`. Chromium
+ * zooms on Ctrl + wheel on Windows and Linux, not on macOS, where Cmd + scrolling and pinching the
+ * trackpad are its counterparts.
+ */
+export interface ZoomWheel {
+  /** A trackpad pinch, which Chromium sends as Ctrl + wheel; otherwise Cmd + scrolling. */
+  readonly pinch: boolean;
+  /** `WheelEvent.deltaY`: CSS pixels, so smaller as the page is zoomed in. */
+  readonly deltaY: number;
+  /** Chromium's `WheelEvent.wheelDeltaY`: 120 per notch of a mouse wheel, also zoomed. */
+  readonly wheelDeltaY: number;
+}
+
+/**
+ * `invoke` channels (renderer → main), `send` channels (main → renderer), and `wheelZoom`, which the
+ * preload sends to the main process.
+ */
 export const IpcChannel = {
   getEnvironment: 'app:environment',
   listItems: 'items:list',
@@ -90,6 +107,7 @@ export const IpcChannel = {
   getSettings: 'settings:get',
   updateSettings: 'settings:update',
   chooseOutputFolder: 'settings:choose-output-folder',
+  wheelZoom: 'window:wheel-zoom',
 } as const;
 
 /** `thumb://video/<item id>`: a still from a video of the list (JPEG). */

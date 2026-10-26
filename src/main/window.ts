@@ -1,4 +1,5 @@
 import { BrowserWindow, nativeTheme } from 'electron';
+import { handleZoom } from './zoom';
 
 export interface MainWindowOptions {
   readonly url: string;
@@ -52,6 +53,10 @@ export function createMainWindow({ url, preload }: MainWindowOptions): BrowserWi
     if (originOf(target) !== origin) {
       event.preventDefault();
     }
+  });
+  handleZoom(window.webContents, {
+    platform: process.platform,
+    isTrusted: (frameUrl) => originOf(frameUrl) === origin,
   });
 
   void window.loadURL(url);

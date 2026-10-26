@@ -296,8 +296,9 @@ Renderer (Angular 22)  ──window.videoTool──▶  Main process (Electron)
   five times a second, so that a drop of thousands of videos does not flood it. It serves the
   renderer over `app://`, video stills over `thumb://` and soundtracks, for previews, over
   `track://`.
-- **Preload** (`src/preload`): exposes the typed bridge as `window.videoTool`, and nothing else; the
-  renderer is sandboxed, without Node.js.
+- **Preload** (`src/preload`): exposes the typed bridge as `window.videoTool`; the renderer is
+  sandboxed, without Node.js. On macOS, it also sends the main process the wheel events that zoom
+  the page (Cmd + scrolling, pinching the trackpad), which Chromium handles itself elsewhere.
 - **Renderer** (`src/renderer`): standalone components, signals, zoneless, OnPush (the v22
   default). It shows the lists and the treatments and asks the main process for every change; the
   main process sends the lists back as they change.
