@@ -1,0 +1,90 @@
+:host {
+  display: block;
+  margin-top: 12px;
+}
+
+.tracks {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: var(--bg);
+}
+
+.list {
+  max-height: 220px;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.track {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 2px 2px 8px;
+  border-radius: var(--radius-s);
+}
+
+.track.selected {
+  background: var(--accent-soft);
+}
+
+.track input {
+  flex: none;
+  margin: 0;
+  accent-color: var(--accent-fill);
+}
+
+.track-label {
+  display: flex;
+  flex: 1;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  padding: 4px 0;
+}
+
+.track-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track-status {
+  flex: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.empty {
+  margin: 0;
+  padding: 14px 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* Over the list while audio files are dragged onto it. */
+.drop-overlay {
+  position: absolute;
+  inset: -1px;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--accent);
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.add {
+  margin-top: 8px;
+}
+
+audio {
+  display: none;
+}

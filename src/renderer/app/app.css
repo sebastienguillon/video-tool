@@ -1,0 +1,62 @@
+/* A column, not a grid: the banner comes and goes, and the body must take the rest either way. */
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--warning-bg);
+  color: var(--text);
+}
+
+.banner app-icon {
+  font-size: 16px;
+  color: var(--warning);
+}
+
+.banner p {
+  margin: 0;
+}
+
+.banner code {
+  margin-left: 4px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.workspace {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.panel {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 340px;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+}
+
+/* Positioned, so that visually hidden labels scroll with it instead of stretching the page. */
+.sections {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}

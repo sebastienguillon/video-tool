@@ -1,0 +1,17 @@
+<ul class="list" aria-label="Videos">
+  @for (item of items(); track item.id) {
+    <li
+      #row
+      class="row"
+      tabindex="0"
+      [attr.aria-label]="item.name"
+      (keydown)="onKeydown($event, item)"
+    >
+      <app-video-row
+        [item]="item"
+        (removeRequested)="remove(item, row)"
+        (rowFocusRequested)="keepFocus(row)"
+      />
+    </li>
+  }
+</ul>

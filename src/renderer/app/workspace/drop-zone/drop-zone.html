@@ -1,0 +1,9 @@
+<div class="zone" [class.active]="active()">
+  <app-icon class="zone-icon" [name]="active() ? 'download' : 'film'" />
+  <h2>{{ active() ? 'Drop to add' : 'Drop videos here' }}</h2>
+  <p>or</p>
+  <button #chooseButton type="button" class="button primary" (click)="choose()">
+    Choose videos…
+  </button>
+  <p class="hint">Folders work too: the videos inside are added.</p>
+</div>

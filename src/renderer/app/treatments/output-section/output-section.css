@@ -1,0 +1,26 @@
+.folder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 0 21px;
+}
+
+.path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: text;
+}
+
+.path.missing {
+  color: var(--warning);
+  font-family: inherit;
+}
+
+.hint {
+  margin-top: 10px;
+}

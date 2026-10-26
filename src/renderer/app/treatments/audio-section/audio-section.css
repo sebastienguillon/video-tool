@@ -1,0 +1,39 @@
+/* Radio buttons drawn as one control: the inputs stay real, and focusable. */
+.segmented {
+  display: grid;
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
+  padding: 2px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-s);
+  background: var(--field-bg);
+}
+
+.segment {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 24px;
+  border-radius: 4px;
+  color: var(--text-muted);
+}
+
+.segment:hover:not(.checked) {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.segment.checked {
+  background: var(--accent-fill);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.segment:has(:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.loop {
+  margin-top: 12px;
+}

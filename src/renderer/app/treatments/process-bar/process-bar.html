@@ -1,0 +1,36 @@
+@if (progress(); as run) {
+  <div class="run">
+    <div class="run-text">
+      <span>{{ run.finished }} of {{ run.total }} done · {{ percent() }}%</span>
+    </div>
+    <div
+      class="progress"
+      role="progressbar"
+      aria-label="Overall progress"
+      aria-valuemin="0"
+      aria-valuemax="100"
+      [style.--value]="run.fraction"
+      [attr.aria-valuenow]="percent()"
+    ></div>
+  </div>
+  <button #mainButton type="button" class="button danger" (click)="stop()">
+    <app-icon name="square" /> Stop all
+  </button>
+} @else {
+  <button
+    #mainButton
+    type="button"
+    class="button primary process"
+    [attr.aria-disabled]="blocker() !== null || starting() ? 'true' : null"
+    [attr.aria-describedby]="blocker() === null ? null : 'process-reason'"
+    (click)="start()"
+  >
+    {{ label() }}
+  </button>
+  @if (blocker(); as reason) {
+    <p id="process-reason" class="reason">{{ reason }}</p>
+  }
+}
+@if (error(); as message) {
+  <p class="error-text" role="alert">{{ message }}</p>
+}

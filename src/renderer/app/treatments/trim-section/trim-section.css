@@ -1,0 +1,13 @@
+.fields {
+  display: grid;
+  gap: 12px;
+}
+
+.precision {
+  margin-top: 14px;
+}
+
+legend {
+  margin-bottom: 4px;
+  padding: 0;
+}

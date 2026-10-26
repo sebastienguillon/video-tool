@@ -1,0 +1,141 @@
+:host {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 9px 12px;
+}
+
+.thumbnail {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 54px;
+  overflow: hidden;
+  border-radius: var(--radius-s);
+  background: var(--tile-bg);
+}
+
+.placeholder {
+  font-size: 20px;
+  color: var(--text-faint);
+}
+
+img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+img.loaded {
+  opacity: 1;
+}
+
+.text {
+  display: grid;
+  min-width: 0;
+  line-height: 18px;
+}
+
+/* The name opens the video; the folder shows it in the file manager. */
+.name,
+.folder {
+  justify-self: start;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+}
+
+.name {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.name:hover,
+.folder:hover {
+  text-decoration: underline;
+}
+
+.name,
+.folder,
+.details {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder,
+.details {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.details {
+  font-variant-numeric: tabular-nums;
+}
+
+.message {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.status.done {
+  color: var(--success);
+}
+
+.running {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.running .progress {
+  width: 120px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* A narrow list: where it stands and what can be done go under the text. */
+@container (width < 560px) {
+  :host {
+    grid-template-columns: 96px minmax(0, 1fr);
+  }
+
+  .side {
+    grid-column: 2;
+    flex-flow: row wrap;
+    align-items: center;
+    justify-content: space-between;
+  }
+}

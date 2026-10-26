@@ -1,0 +1,349 @@
+/* Design tokens. Backgrounds match the BrowserWindow colours (no flash on open). */
+/* Text colours meet WCAG AA (4.5:1) on --bg, --surface and --chrome-bg, in both schemes. */
+:root {
+  color-scheme: light dark;
+
+  --bg: #f6f6f7;
+  --surface: #ffffff;
+  --chrome-bg: #ececee;
+  --field-bg: #ffffff;
+  --tile-bg: #e4e4e8;
+  --hover: #ebebef;
+  --border: #d9d9de;
+  --border-strong: #8a8c95;
+  --text: #1b1c1f;
+  --text-muted: #63656e;
+  --text-faint: #9c9ea6;
+  --accent: #2a64e2;
+  /* Primary buttons: white text on it. */
+  --accent-fill: #2a64e2;
+  --accent-text: #ffffff;
+  --accent-soft: rgb(42 100 226 / 10%);
+  --focus-ring: #2a64e2;
+  --focus-halo: rgb(42 100 226 / 22%);
+  --danger: #c5302a;
+  --warning: #9a5c00;
+  --warning-bg: #fff4dc;
+  --success: #1d7a3a;
+  --shadow: 0 8px 28px rgb(0 0 0 / 16%), 0 1px 3px rgb(0 0 0 / 10%);
+
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, Ubuntu, Cantarell, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  --radius-s: 6px;
+  --radius-m: 8px;
+  --toolbar-height: 52px;
+  --titlebar-inset: 0px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141518;
+    --surface: #1b1c20;
+    --chrome-bg: #1f2024;
+    --field-bg: #141518;
+    --tile-bg: #25262b;
+    --hover: #2a2b31;
+    --border: #2f3036;
+    --border-strong: #6c6e77;
+    --text: #e8e9ed;
+    --text-muted: #a0a2ab;
+    --text-faint: #6c6e77;
+    --accent: #5b8cff;
+    --accent-fill: #3768e8;
+    --accent-soft: rgb(91 140 255 / 14%);
+    --focus-ring: #5b8cff;
+    --focus-halo: rgb(91 140 255 / 28%);
+    --danger: #ff6b62;
+    --warning: #f0b14a;
+    --warning-bg: #3a2d12;
+    --success: #4cc38a;
+    --shadow: 0 10px 32px rgb(0 0 0 / 50%), 0 1px 3px rgb(0 0 0 / 40%);
+  }
+}
+
+/* Room for the traffic lights of the macOS hidden-inset title bar. */
+:root[data-platform='darwin'] {
+  --titlebar-inset: 68px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.4 var(--font);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  user-select: text;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+}
+
+.button:hover:not(:disabled, [aria-disabled='true']) {
+  background: var(--hover);
+}
+
+.button.primary {
+  border-color: var(--accent-fill);
+  background: var(--accent-fill);
+  color: var(--accent-text);
+}
+
+.button.primary:hover:not(:disabled, [aria-disabled='true']) {
+  background: color-mix(in srgb, var(--accent-fill) 88%, black);
+}
+
+.button.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.button.compact {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.button:disabled {
+  opacity: 0.5;
+}
+
+/* Unavailable, but still focusable: the focus stays, and the reason it is unavailable is read. */
+.button[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.icon-button {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 16px;
+  -webkit-app-region: no-drag;
+}
+
+.icon-button.small {
+  width: 24px;
+  height: 24px;
+  font-size: 14px;
+}
+
+.icon-button:hover:not(:disabled),
+.icon-button.active {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.icon-button:disabled {
+  opacity: 0.5;
+}
+
+.input,
+.select {
+  height: 28px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-s);
+  background: var(--field-bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.input {
+  min-width: 0;
+  padding: 0 8px;
+  user-select: text;
+}
+
+.input::placeholder {
+  color: var(--text-muted);
+}
+
+.input:focus-visible,
+.select:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -1px;
+  box-shadow: 0 0 0 3px var(--focus-halo);
+}
+
+.input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.select {
+  padding: 0 4px;
+}
+
+/* A radio button or checkbox, its label, and an optional description under the label. */
+.choice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: baseline;
+  padding: 3px 0;
+}
+
+.choice input {
+  margin: 0;
+  accent-color: var(--accent-fill);
+  translate: 0 2px;
+}
+
+.choice .description {
+  margin: 0;
+  grid-column: 2;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.hint {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.error-text {
+  color: var(--danger);
+}
+
+.warning-text {
+  color: var(--warning);
+}
+
+/* A bar filled to `--value` (0 to 1); without one it slides, for a step that has not reported yet. */
+.progress {
+  position: relative;
+  overflow: hidden;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--tile-bg);
+}
+
+.progress::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--value, 0) * 100%);
+  border-radius: inherit;
+  background: var(--accent-fill);
+  transition: width 0.25s linear;
+}
+
+.progress.indeterminate::after {
+  width: 30%;
+  animation: slide 1.4s ease-in-out infinite;
+}
+
+.spin {
+  animation: spin 1.2s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes slide {
+  from {
+    translate: -100% 0;
+  }
+  to {
+    translate: 340% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin,
+  .progress.indeterminate::after {
+    animation: none;
+  }
+
+  .progress::after {
+    transition: none;
+  }
+
+  .progress.indeterminate::after {
+    width: 100%;
+    opacity: 0.35;
+  }
+}
+
+/* A part of the treatments panel. */
+.section {
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.section-title app-icon {
+  font-size: 15px;
+  color: var(--text-muted);
+}

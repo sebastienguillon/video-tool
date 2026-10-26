@@ -1,0 +1,55 @@
+<section class="section" aria-labelledby="output-heading">
+  <h2 id="output-heading" class="section-title"><app-icon name="folder-open" /> Save to</h2>
+  <fieldset>
+    <legend class="visually-hidden">Save to</legend>
+    <div class="choice">
+      <input
+        #location
+        id="output-beside"
+        type="radio"
+        name="output-location"
+        value="beside"
+        [checked]="output().location === 'beside'"
+        (change)="setLocation('beside')"
+      />
+      <label for="output-beside">Next to each video</label>
+    </div>
+    <div class="choice">
+      <input
+        #location
+        id="output-folder"
+        type="radio"
+        name="output-location"
+        value="folder"
+        [checked]="output().location === 'folder'"
+        (change)="setLocation('folder')"
+      />
+      <label for="output-folder">In a folder</label>
+    </div>
+  </fieldset>
+
+  @if (output().location === 'folder') {
+    <div class="folder">
+      @if (output().folder; as folder) {
+        <span class="path" [title]="folder">{{ folder }}</span>
+      } @else {
+        <span class="path missing">No folder chosen</span>
+      }
+      <button
+        type="button"
+        class="button compact"
+        aria-label="Choose the folder to save in"
+        (click)="chooseFolder()"
+      >
+        Choose…
+      </button>
+    </div>
+  }
+
+  <p class="hint">
+    Originals are never modified.
+    @if (example(); as name) {
+      Results are named after their video, like “{{ name }}” for “clip.mov”.
+    }
+  </p>
+</section>

@@ -1,0 +1,12 @@
+/* Electron main process, shared contracts, build scripts and their tests (Node 24). */
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2024",
+    "lib": ["ES2024"],
+    "types": ["node"],
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["src/main/**/*.ts", "src/shared/**/*.ts", "scripts/**/*.ts", "vitest.config.ts"]
+}

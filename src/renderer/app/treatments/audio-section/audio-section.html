@@ -1,0 +1,36 @@
+<section class="section" aria-labelledby="audio-heading">
+  <h2 id="audio-heading" class="section-title"><app-icon name="music" /> Audio</h2>
+  <fieldset class="segmented">
+    <legend class="visually-hidden">Audio</legend>
+    @for (option of modes; track option.value) {
+      <label class="segment" [class.checked]="mode() === option.value">
+        <input
+          type="radio"
+          name="audio-mode"
+          class="visually-hidden"
+          [value]="option.value"
+          [checked]="mode() === option.value"
+          (change)="setMode(option.value)"
+        />
+        {{ option.label }}
+      </label>
+    }
+  </fieldset>
+
+  @if (mode() === 'replace') {
+    <app-track-list />
+    <div class="choice loop">
+      <input
+        id="audio-loop"
+        type="checkbox"
+        aria-describedby="audio-loop-description"
+        [checked]="loop()"
+        (change)="setLoop($event)"
+      />
+      <label for="audio-loop">Loop the audio if the video is longer</label>
+      <p id="audio-loop-description" class="description">
+        Otherwise silence fills the rest. Longer audio is cut at the end of the video.
+      </p>
+    </div>
+  }
+</section>

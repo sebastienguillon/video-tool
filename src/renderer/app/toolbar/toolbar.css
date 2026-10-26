@@ -1,0 +1,31 @@
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: var(--toolbar-height);
+  padding: 0 12px 0 calc(16px + var(--titlebar-inset));
+  border-bottom: 1px solid var(--border);
+  background: var(--chrome-bg);
+  -webkit-app-region: drag;
+}
+
+h1 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  -webkit-app-region: no-drag;
+}
+
+.confirm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 6px;
+}

@@ -1,0 +1,23 @@
+<div class="stage">
+  @if (empty()) {
+    <app-drop-zone [active]="dragging()" />
+  } @else {
+    <app-video-list />
+    @if (dragging()) {
+      <div class="overlay" aria-hidden="true">
+        <span class="overlay-label"><app-icon name="download" /> Drop to add</span>
+      </div>
+    }
+  }
+</div>
+<footer class="status">
+  <span class="summary">{{ summary() }}</span>
+  <p
+    class="notice"
+    role="status"
+    [class.warning-text]="notice()?.tone === 'warning'"
+    [class.error-text]="notice()?.tone === 'error'"
+  >
+    {{ notice()?.text }}
+  </p>
+</footer>

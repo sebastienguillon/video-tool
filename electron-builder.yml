@@ -1,0 +1,74 @@
+# https://www.electron.build/configuration
+appId: com.sebastienguillon.videotool
+productName: Video Tool
+copyright: Copyright © 2026 Sébastien Guillon
+
+directories:
+  output: release
+  buildResources: build
+
+# No spaces in file names: GitHub rewrites them in release assets.
+artifactName: ${name}-${version}-${os}-${arch}.${ext}
+
+files:
+  - dist/**/*
+  - package.json
+
+# Optional ffmpeg/ffprobe binaries, per platform: resources/bin/<mac|win|linux>/
+extraResources:
+  - from: resources/bin/${os}
+    to: bin
+    filter: ['**/*']
+
+# "Open with" and drops on the app's icon take the videos the app accepts (VIDEO_EXTENSIONS in
+# src/shared/model.ts) and folders, without ever making it the default player. Not on Windows,
+# where the installer would register the app as the default for each type: there, dropping on the
+# app or a shortcut works without any association.
+mac:
+  category: public.app-category.video
+  target: [dmg]
+  fileAssociations:
+    - { ext: [mp4, m4v], name: MPEG-4 video, role: Viewer, rank: Alternate }
+    - { ext: [mov, qt], name: QuickTime movie, role: Viewer, rank: Alternate }
+    - { ext: mkv, name: Matroska video, role: Viewer, rank: Alternate }
+    - { ext: webm, name: WebM video, role: Viewer, rank: Alternate }
+    - { ext: avi, name: AVI video, role: Viewer, rank: Alternate }
+    - { ext: wmv, name: Windows Media video, role: Viewer, rank: Alternate }
+    - { ext: flv, name: Flash video, role: Viewer, rank: Alternate }
+    - { ext: [mpg, mpeg], name: MPEG video, role: Viewer, rank: Alternate }
+    - { ext: [m2ts, mts, ts], name: MPEG transport stream, role: Viewer, rank: Alternate }
+    - { ext: 3gp, name: 3GPP video, role: Viewer, rank: Alternate }
+    - { ext: ogv, name: Ogg video, role: Viewer, rank: Alternate }
+  # Merged with the file associations above.
+  extendInfo:
+    CFBundleDocumentTypes:
+      - CFBundleTypeName: Folder
+        CFBundleTypeRole: Viewer
+        LSHandlerRank: Alternate
+        LSItemContentTypes: [public.folder]
+win:
+  target: [nsis]
+nsis:
+  artifactName: ${name}-${version}-${os}-${arch}-setup.${ext}
+linux:
+  category: AudioVideo
+  target: [AppImage, deb]
+  # Required by .deb packages. GitHub's no-reply address keeps a personal address out of them.
+  maintainer: Sébastien Guillon <1942471+sebastienguillon@users.noreply.github.com>
+  # The desktop entry lists the existing types. File associations would install their own
+  # definitions of them, which give every video on the system a document icon. Folders are left
+  # out: the app would be offered for all of them.
+  mimeTypes:
+    - video/mp4 # mp4, m4v
+    - video/x-m4v
+    - video/quicktime # mov, qt
+    - video/x-matroska # mkv
+    - video/webm
+    - video/x-msvideo # avi
+    - video/vnd.avi
+    - video/x-ms-wmv
+    - video/x-flv
+    - video/mpeg # mpg, mpeg
+    - video/mp2t # m2ts, mts, ts
+    - video/3gpp # 3gp
+    - video/ogg # ogv

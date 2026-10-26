@@ -1,0 +1,27 @@
+<label class="label" [for]="id">{{ label() }}</label>
+<div class="controls">
+  <input
+    type="text"
+    class="input"
+    autocomplete="off"
+    spellcheck="false"
+    placeholder="0"
+    [id]="id"
+    [attr.inputmode]="unit() === 'frames' ? 'numeric' : null"
+    [attr.aria-invalid]="invalid()"
+    [attr.aria-describedby]="`${id}-hint`"
+    [value]="text()"
+    (input)="onInput($event)"
+    (blur)="reformat()"
+  />
+  <select
+    class="select"
+    [attr.aria-label]="`${label()}: unit`"
+    [value]="unit()"
+    (change)="setUnit($event)"
+  >
+    <option value="seconds">seconds</option>
+    <option value="frames">frames</option>
+  </select>
+</div>
+<p class="hint" [id]="`${id}-hint`" [class.error-text]="invalid()">{{ message() }}</p>

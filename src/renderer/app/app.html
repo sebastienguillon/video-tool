@@ -1,0 +1,36 @@
+<app-icon-sprite />
+<app-toolbar />
+@if (environment.ffmpegMissing()) {
+  <div class="banner" role="alert">
+    <app-icon name="alert" />
+    <p>
+      ffmpeg was not found. Install it, then restart Video Tool:
+      <code>{{ environment.installCommand }}</code>
+    </p>
+  </div>
+} @else if (environment.outdatedVersion(); as version) {
+  <div class="banner" role="alert">
+    <app-icon name="alert" />
+    <p>
+      ffmpeg {{ environment.minVersion }} or later is needed; this one is {{ version }}.
+      @if (environment.updateCommand; as command) {
+        Update it, then restart Video Tool: <code>{{ command }}</code>
+      } @else {
+        Update it, then restart Video Tool.
+      }
+    </p>
+  </div>
+}
+<div class="body">
+  <main class="workspace">
+    <app-workspace />
+  </main>
+  <aside class="panel" aria-label="Treatments">
+    <div class="sections">
+      <app-audio-section />
+      <app-trim-section />
+      <app-output-section />
+    </div>
+    <app-process-bar />
+  </aside>
+</div>

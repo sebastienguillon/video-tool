@@ -1,0 +1,34 @@
+:host {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.process {
+  width: 100%;
+  height: 34px;
+  font-weight: 600;
+}
+
+.run {
+  display: grid;
+  gap: 6px;
+}
+
+.run-text {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.reason,
+.error-text {
+  margin: 0;
+  font-size: 12px;
+}
+
+.reason {
+  color: var(--text-muted);
+}

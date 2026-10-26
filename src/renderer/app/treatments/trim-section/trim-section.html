@@ -1,0 +1,49 @@
+<section class="section" aria-labelledby="trim-heading">
+  <h2 id="trim-heading" class="section-title"><app-icon name="scissors" /> Trim</h2>
+  <div class="fields">
+    <app-length-field
+      label="Remove from the start"
+      [value]="recipe().trimStart"
+      (valueChange)="setTrim('trimStart', $event)"
+      (validityChange)="setValidity('trimStart', $event)"
+    />
+    <app-length-field
+      label="Remove from the end"
+      [value]="recipe().trimEnd"
+      (valueChange)="setTrim('trimEnd', $event)"
+      (validityChange)="setValidity('trimEnd', $event)"
+    />
+  </div>
+
+  @if (trimming()) {
+    <fieldset class="precision">
+      <legend>Precision</legend>
+      <div class="choice">
+        <input
+          id="precision-exact"
+          type="radio"
+          name="precision"
+          aria-describedby="precision-exact-description"
+          [checked]="recipe().precision === 'exact'"
+          (change)="setPrecision('exact')"
+        />
+        <label for="precision-exact">Exact</label>
+        <p id="precision-exact-description" class="description">Re-encodes the video.</p>
+      </div>
+      <div class="choice">
+        <input
+          id="precision-fast"
+          type="radio"
+          name="precision"
+          aria-describedby="precision-fast-description"
+          [checked]="recipe().precision === 'fast'"
+          (change)="setPrecision('fast')"
+        />
+        <label for="precision-fast">Fast</label>
+        <p id="precision-fast-description" class="description">
+          No re-encoding. The start may shift to the previous keyframe.
+        </p>
+      </div>
+    </fieldset>
+  }
+</section>

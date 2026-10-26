@@ -1,0 +1,27 @@
+:host {
+  display: block;
+  min-height: 0;
+  overflow-y: auto;
+  container-type: inline-size;
+}
+
+.list {
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+}
+
+.row {
+  border-bottom: 1px solid var(--border);
+  /* Rows out of view are not laid out: a few hundred stay fast. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 74px;
+}
+
+.row:focus-visible {
+  outline-offset: -2px;
+}
+
+.row:hover {
+  background: color-mix(in srgb, var(--hover) 50%, transparent);
+}

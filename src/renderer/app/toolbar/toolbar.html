@@ -1,0 +1,47 @@
+<header class="toolbar">
+  <h1>Video Tool</h1>
+  <div class="actions">
+    <button
+      #addButton
+      type="button"
+      class="button primary"
+      [title]="`Add videos (${shortcut})`"
+      (click)="add()"
+    >
+      <app-icon name="plus" /> Add videos…
+    </button>
+    @if (confirmingClear()) {
+      <div
+        class="confirm"
+        role="alertdialog"
+        aria-labelledby="clear-question"
+        (keydown.escape)="cancelClear($event)"
+      >
+        <span id="clear-question">
+          {{ busy() ? 'Stop processing and clear the whole list?' : 'Clear the whole list?' }}
+        </span>
+        <button #cancelButton type="button" class="button" (click)="cancelClear()">Cancel</button>
+        <button type="button" class="button danger" (click)="clearAll()">Clear all</button>
+      </div>
+    } @else {
+      <button
+        type="button"
+        class="button"
+        title="Remove the videos that are done, failed, canceled or unsupported"
+        [disabled]="finishedCount() === 0"
+        (click)="clearFinished()"
+      >
+        Clear finished
+      </button>
+      <button
+        #clearAllButton
+        type="button"
+        class="button"
+        [disabled]="empty()"
+        (click)="askClearAll()"
+      >
+        Clear all
+      </button>
+    }
+  </div>
+</header>

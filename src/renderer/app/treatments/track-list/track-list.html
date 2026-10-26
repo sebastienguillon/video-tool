@@ -1,0 +1,57 @@
+<fieldset class="tracks">
+  <legend class="visually-hidden">Replacement audio</legend>
+  @if (tracks().length > 0) {
+    <ul class="list">
+      @for (track of tracks(); track track.id) {
+        @let id = `track-${$index}`;
+        @let isPlaying = playing() === track.id;
+        <li #row class="track" [class.selected]="selectedId() === track.id">
+          <input
+            type="radio"
+            name="track"
+            [id]="id"
+            [checked]="selectedId() === track.id"
+            (change)="select(track)"
+          />
+          <label class="track-label" [for]="id" [title]="track.path">
+            <span class="track-name">{{ track.name }}</span>
+            <span class="track-status" [class.warning-text]="!playable(track)">
+              {{ status(track) }}
+            </span>
+          </label>
+          <button
+            type="button"
+            class="icon-button small"
+            [title]="isPlaying ? 'Pause' : 'Play'"
+            [attr.aria-label]="`${isPlaying ? 'Pause' : 'Play'} ${track.name}`"
+            [disabled]="!playable(track)"
+            (click)="toggle(track)"
+          >
+            <app-icon [name]="isPlaying ? 'pause' : 'play'" />
+          </button>
+          <button
+            type="button"
+            class="icon-button small"
+            title="Remove from the audio list"
+            [attr.aria-label]="`Remove ${track.name} from the audio list`"
+            (click)="remove(track, row)"
+          >
+            <app-icon name="x" />
+          </button>
+        </li>
+      }
+    </ul>
+  } @else {
+    <p class="empty">No audio files yet. Add some, or drop them here.</p>
+  }
+  @if (dropping()) {
+    <div class="drop-overlay" aria-hidden="true">Drop to add to the audio list</div>
+  }
+</fieldset>
+<button #addButton type="button" class="button add" (click)="choose()">
+  <app-icon name="plus" /> Add audio files…
+</button>
+<p class="hint" role="status" [class.error-text]="notice()?.tone === 'error'">
+  {{ notice()?.text }}
+</p>
+<audio #player preload="none" (ended)="playing.set(null)" (error)="onPlayerError()"></audio>

@@ -1,0 +1,63 @@
+:host {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-height: 0;
+}
+
+.stage {
+  position: relative;
+  display: grid;
+  min-height: 0;
+}
+
+/* Over the list, letting the drag events through to it: the window stays the drop target. */
+.overlay {
+  position: absolute;
+  inset: 8px;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius-m);
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  pointer-events: none;
+}
+
+.overlay-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 26px;
+  padding: 0 12px;
+  border-top: 1px solid var(--border);
+  background: var(--chrome-bg);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.summary {
+  flex: none;
+}
+
+/* Wraps rather than cutting a long message short: what to do next may be at its end. */
+.notice {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 4px 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+}

@@ -1,0 +1,165 @@
+@let current = item();
+@let state = current.state;
+<div class="thumbnail">
+  <app-icon class="placeholder" name="film" />
+  @if (thumbnail(); as url) {
+    @if (!failed()) {
+      <img
+        alt=""
+        loading="lazy"
+        decoding="async"
+        draggable="false"
+        [class.loaded]="loaded()"
+        [src]="url"
+        (load)="loaded.set(true)"
+        (error)="failed.set(true)"
+      />
+    }
+  }
+</div>
+
+<div class="text">
+  <button
+    type="button"
+    class="name"
+    [title]="current.path"
+    [attr.aria-label]="`Open ${current.name}`"
+    (click)="openSource()"
+  >
+    {{ current.name }}
+  </button>
+  <button
+    type="button"
+    class="folder"
+    [title]="`${revealLabel}: ${current.folder}`"
+    [attr.aria-label]="`${revealLabel}: ${current.name}`"
+    (click)="revealSource()"
+  >
+    {{ current.folder }}
+  </button>
+  @if (details(); as line) {
+    <span class="details">{{ line }}</span>
+  }
+  @switch (state.kind) {
+    @case ('unsupported') {
+      <span class="message warning-text">{{ state.message }}</span>
+    }
+    @case ('failed') {
+      <span class="message error-text">{{ state.message }}</span>
+    }
+  }
+  @if (issue(); as message) {
+    <span class="message warning-text"><app-icon name="alert" /> {{ message }}</span>
+  }
+</div>
+
+<div class="side">
+  @switch (state.kind) {
+    @case ('probing') {
+      <span class="status"><app-icon class="spin" name="loader" /> Reading…</span>
+    }
+    @case ('unsupported') {
+      <span class="status warning-text"><app-icon name="alert" /> Not supported</span>
+    }
+    @case ('queued') {
+      <span class="status"><app-icon name="clock" /> Waiting</span>
+    }
+    @case ('running') {
+      <div class="running">
+        <div
+          class="progress"
+          role="progressbar"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          [class.indeterminate]="percent() === null"
+          [style.--value]="(percent() ?? 0) / 100"
+          [attr.aria-valuenow]="percent()"
+          [attr.aria-label]="`Processing ${current.name}`"
+        ></div>
+        <span class="status">
+          @if (percent() === null) {
+            Starting…
+          } @else {
+            {{ percent() }}%
+            @if (speed(); as times) {
+              · {{ times }}
+            }
+          }
+        </span>
+      </div>
+    }
+    @case ('done') {
+      <span class="status done" [title]="state.outputPath">
+        <app-icon name="circle-check" /> Done
+      </span>
+    }
+    @case ('failed') {
+      <span class="status error-text"><app-icon name="circle-x" /> Failed</span>
+    }
+    @case ('canceled') {
+      <span class="status"><app-icon name="ban" /> Canceled</span>
+    }
+  }
+
+  <div class="actions">
+    @switch (state.kind) {
+      @case ('done') {
+        <button
+          type="button"
+          class="button compact"
+          [attr.aria-label]="`Open the result of ${current.name}`"
+          (click)="openOutput()"
+        >
+          Open
+        </button>
+        <button
+          type="button"
+          class="button compact"
+          [attr.aria-label]="`${revealLabel}: the result of ${current.name}`"
+          (click)="revealOutput()"
+        >
+          {{ revealLabel }}
+        </button>
+        <button
+          type="button"
+          class="icon-button small"
+          title="Process again"
+          [attr.aria-label]="`Process ${current.name} again`"
+          (click)="reset()"
+        >
+          <app-icon name="rotate-ccw" />
+        </button>
+      }
+      @case ('failed') {
+        <button
+          type="button"
+          class="button compact"
+          [attr.aria-label]="`Retry ${current.name}`"
+          (click)="reset()"
+        >
+          <app-icon name="rotate-ccw" /> Retry
+        </button>
+      }
+    }
+    @if (state.kind === 'queued' || state.kind === 'running') {
+      <button
+        type="button"
+        class="button compact"
+        [attr.aria-label]="`Cancel ${current.name}`"
+        (click)="cancel()"
+      >
+        Cancel
+      </button>
+    } @else {
+      <button
+        type="button"
+        class="icon-button small"
+        title="Remove from the list"
+        [attr.aria-label]="`Remove ${current.name} from the list`"
+        (click)="removeRequested.emit()"
+      >
+        <app-icon name="x" />
+      </button>
+    }
+  </div>
+</div>
