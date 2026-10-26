@@ -29,6 +29,7 @@ const TRACK: AudioTrack = {
   id: 'track',
   path: '/music/song.mp3',
   name: 'song.mp3',
+  suffix: 'song',
   durationSec: 12,
   status: 'ok',
 };
@@ -147,7 +148,7 @@ describe('videoIssue', () => {
 describe('outputLabels', () => {
   it('names what was done, audio first', () => {
     const labels = (patch: Partial<typeof DEFAULT_RECIPE>) =>
-      outputLabels({ ...DEFAULT_RECIPE, ...patch });
+      outputLabels({ ...DEFAULT_RECIPE, ...patch }, null);
     expect(labels({ audio: 'remove' })).toEqual(['no audio']);
     expect(labels({ audio: 'replace' })).toEqual(['new audio']);
     expect(labels({ audio: 'keep', trimStart: { amount: 2, unit: 'frames' } })).toEqual([
@@ -161,5 +162,16 @@ describe('outputLabels', () => {
       'new audio',
       'trimmed',
     ]);
+  });
+
+  it('names a replaced audio by the suffix of its soundtrack', () => {
+    const replace = { ...DEFAULT_RECIPE, audio: 'replace' } as const;
+    expect(outputLabels(replace, 'Beach waves')).toEqual(['Beach waves']);
+    expect(
+      outputLabels({ ...replace, trimStart: { amount: 1, unit: 'seconds' } }, 'Beach waves'),
+    ).toEqual(['Beach waves', 'trimmed']);
+    // Only a replaced audio is named after its soundtrack.
+    expect(outputLabels({ ...replace, audio: 'remove' }, 'Beach waves')).toEqual(['no audio']);
+    expect(outputLabels({ ...replace, audio: 'keep' }, 'Beach waves')).toEqual([]);
   });
 });

@@ -3,6 +3,7 @@ import { Component, computed, inject, viewChildren } from '@angular/core';
 import type { OutputLocation } from '@shared/model';
 import { outputLabels } from '@shared/recipe';
 import { SettingsStore } from '../../core/settings-store';
+import { TracksStore } from '../../core/tracks-store';
 import { Icon } from '../../ui/icon/icon';
 
 /** Where the results go, and what they are named. */
@@ -14,6 +15,7 @@ import { Icon } from '../../ui/icon/icon';
 })
 export class OutputSection {
   private readonly settings = inject(SettingsStore);
+  private readonly tracks = inject(TracksStore);
   private readonly radios = viewChildren<ElementRef<HTMLInputElement>>('location');
 
   protected readonly output = this.settings.output;
@@ -22,7 +24,7 @@ export class OutputSection {
    * its video, as far as the format allows.
    */
   protected readonly example = computed(() => {
-    const labels = outputLabels(this.settings.recipe());
+    const labels = outputLabels(this.settings.recipe(), this.tracks.selected()?.suffix ?? null);
     return labels.length === 0 ? null : `clip (${labels.join(', ')}).mov`;
   });
 

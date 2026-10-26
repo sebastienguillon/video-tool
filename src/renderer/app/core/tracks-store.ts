@@ -112,6 +112,20 @@ export class TracksStore {
     }
   }
 
+  /**
+   * Sets what the names of results say of a track. Resolves to the suffix kept, cleaned up by the
+   * main process; `null` when the track left the list, or the suffix could not be changed.
+   */
+  async setSuffix(track: AudioTrack, suffix: string): Promise<string | null> {
+    try {
+      return await this.desktop.setTrackSuffix(track.id, suffix);
+    } catch (error) {
+      log.warn('Cannot change the suffix of an audio file:', error);
+      this.board.error(`Cannot change the suffix of ${track.name}: ${ipcErrorMessage(error)}`);
+      return null;
+    }
+  }
+
   /** Forgets a track (the file stays); the recipe no longer uses it. */
   async remove(track: AudioTrack): Promise<void> {
     this.dismissPreviewFailure(track.id);

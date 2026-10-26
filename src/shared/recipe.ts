@@ -25,14 +25,15 @@ export function changesNothing(recipe: Recipe): boolean {
 
 /**
  * What the name of a result says was done to it, in a fixed order: `clip (no audio, trimmed).mp4`.
- * Empty for a recipe that changes nothing.
+ * A replaced audio is named by `trackSuffix`, the suffix of the soundtrack (`clip (Beach waves).mp4`),
+ * or `new audio` without one. Empty for a recipe that changes nothing.
  */
-export function outputLabels(recipe: Recipe): string[] {
+export function outputLabels(recipe: Recipe, trackSuffix: string | null): string[] {
   const labels: string[] = [];
   if (recipe.audio === 'remove') {
     labels.push('no audio');
   } else if (recipe.audio === 'replace') {
-    labels.push('new audio');
+    labels.push(trackSuffix ?? 'new audio');
   }
   if (trims(recipe)) {
     labels.push('trimmed');

@@ -8,6 +8,7 @@ import type {
   VideoInfo,
 } from '@shared/model';
 import { DEFAULT_SETTINGS } from '@shared/model';
+import { trackSuffix } from '@shared/track-suffix';
 
 /** The bridge's methods. */
 type Method = {
@@ -56,6 +57,7 @@ export function audioTrack(id: string, overrides: Partial<AudioTrack> = {}): Aud
     id,
     path: `C:\\Music\\${name}`,
     name,
+    suffix: id,
     durationSec: 95,
     status: 'ok',
     ...overrides,
@@ -108,6 +110,21 @@ export class FakeDesktop implements DesktopBridge {
     this.call('chooseTracks', [], () => Promise.resolve(null));
   readonly removeTrack = (id: string): Promise<void> =>
     this.call('removeTrack', [id], () => Promise.resolve());
+  /** Keeps the suffix as the main process does. */
+  readonly setTrackSuffix = (id: string, suffix: string): Promise<string | null> =>
+    this.call('setTrackSuffix', [id, suffix], () => {
+      const track = this.tracks.find((candidate) => candidate.id === id);
+      if (track === undefined) {
+        return Promise.resolve(null);
+      }
+      const kept = trackSuffix(suffix, track.name);
+      this.emitTracks(
+        this.tracks.map((candidate) =>
+          candidate.id === id ? { ...track, suffix: kept } : candidate,
+        ),
+      );
+      return Promise.resolve(kept);
+    });
   readonly getSettings = (): Promise<Settings> =>
     this.call('getSettings', [], () => Promise.resolve(this.settings));
   readonly updateSettings = (patch: Partial<Settings>): Promise<Settings> =>

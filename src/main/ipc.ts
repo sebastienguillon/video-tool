@@ -38,6 +38,8 @@ type Result<K extends InvokeMethod> = Awaited<ReturnType<DesktopBridge[K]>>;
 /** More paths or ids than any drop or selection makes: a renderer bug, not a request. */
 const MAX_LIST_LENGTH = 100_000;
 const MAX_ID_LENGTH = 256;
+/** Far more than a suffix keeps (see `trackSuffix`), but not a whole file's worth. */
+const MAX_SUFFIX_LENGTH = 10_000;
 
 const ALL_FILES: FileFilter = { name: 'All files', extensions: ['*'] };
 
@@ -125,7 +127,11 @@ export function registerIpc({
     if (issue !== null) {
       throw new Error(issue);
     }
-    return queue.start(recipe, output, track === null ? null : { path: track.path });
+    return queue.start(
+      recipe,
+      output,
+      track === null ? null : { path: track.path, suffix: track.suffix },
+    );
   });
 
   handle('cancelProcessing', (_event, ids) => {
@@ -169,6 +175,10 @@ export function registerIpc({
   handle('removeTrack', (_event, id) => {
     library.remove(parseId(id));
   });
+
+  handle('setTrackSuffix', (_event, id, suffix) =>
+    library.setSuffix(parseId(id), parseSuffix(suffix)),
+  );
 
   handle('getSettings', () => store.settings());
 
@@ -310,6 +320,13 @@ export function parseIds(value: unknown): string[] {
     throw invalid('ids');
   }
   return ids;
+}
+
+export function parseSuffix(value: unknown): string {
+  if (typeof value !== 'string' || value.length > MAX_SUFFIX_LENGTH) {
+    throw invalid('suffix');
+  }
+  return value;
 }
 
 export function parseItemFile(value: unknown): ItemFile {

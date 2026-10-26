@@ -1,17 +1,20 @@
 import type { ElementRef } from '@angular/core';
 import {
+  afterNextRender,
   Component,
   computed,
   DestroyRef,
   DOCUMENT,
   effect,
   inject,
+  Injector,
   signal,
   viewChild,
 } from '@angular/core';
 import { trackUrl } from '@shared/desktop-api';
 import type { AudioTrack } from '@shared/model';
 import { formatDuration } from '@shared/time';
+import { trackSuffix } from '@shared/track-suffix';
 import { FileDrop, TRACKS_DROP_ATTRIBUTE } from '../../core/file-drop';
 import { SettingsStore } from '../../core/settings-store';
 import { TracksStore } from '../../core/tracks-store';
@@ -38,6 +41,7 @@ export class TrackList {
   private readonly settings = inject(SettingsStore);
   private readonly drop = inject(FileDrop);
   private readonly document = inject(DOCUMENT);
+  private readonly injector = inject(Injector);
   private readonly player = viewChild<ElementRef<HTMLAudioElement>>('player');
   private readonly addButton = viewChild.required<ElementRef<HTMLButtonElement>>('addButton');
 
@@ -79,8 +83,50 @@ export class TrackList {
     }
   }
 
-  protected select(track: AudioTrack): void {
+  /** The suffix field opens under the chosen row: the list scrolls to show it, if it has to. */
+  protected select(track: AudioTrack, row: HTMLElement): void {
     this.store.select(track.id);
+    afterNextRender(
+      () => {
+        row.scrollIntoView({ block: 'nearest' });
+      },
+      { injector: this.injector },
+    );
+  }
+
+  /** What an empty suffix stands for: the file name without its extension, as the suffix keeps it. */
+  protected defaultSuffix(track: AudioTrack): string {
+    return trackSuffix(null, track.name);
+  }
+
+  /**
+   * The field lost the focus. Unless the whole window did (another app was activated: the field is
+   * still being edited, and stays as typed), the suffix is saved.
+   */
+  protected leaveSuffix(track: AudioTrack, input: HTMLInputElement): void {
+    if (this.document.activeElement !== input) {
+      void this.saveSuffix(track, input);
+    }
+  }
+
+  /**
+   * Saves the suffix typed for `track`, then shows the one kept: cleaned up, or the file name for
+   * nothing. Unless the user typed on meanwhile.
+   */
+  protected async saveSuffix(track: AudioTrack, input: HTMLInputElement): Promise<void> {
+    const typed = input.value;
+    if (typed === track.suffix) {
+      return;
+    }
+    const kept = await this.store.setSuffix(track, typed);
+    if (input.value === typed) {
+      input.value = kept ?? this.suffixOf(track);
+    }
+  }
+
+  /** Escape gives up what was typed. */
+  protected revertSuffix(track: AudioTrack, input: HTMLInputElement): void {
+    input.value = this.suffixOf(track);
   }
 
   protected toggle(track: AudioTrack): void {
@@ -128,6 +174,11 @@ export class TrackList {
       (neighbour?.querySelector('input') ?? this.addButton().nativeElement).focus();
     }
     void this.store.remove(track);
+  }
+
+  /** The suffix of `track` as listed now: it may have changed since `track` was. */
+  private suffixOf(track: AudioTrack): string {
+    return this.tracks().find((candidate) => candidate.id === track.id)?.suffix ?? track.suffix;
   }
 
   private stop(): void {

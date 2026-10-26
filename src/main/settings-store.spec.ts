@@ -118,25 +118,45 @@ describe('sanitizeTracks', () => {
         { id: 'c', path: 'relative.mp3' },
         { id: 'd', path: absolute('picture.jpg') },
         { id: '', path: absolute('nameless.mp3') },
-        { id: 'e', path: absolute('Loop.FLAC'), name: 'ignored' },
+        { id: 'e', path: absolute('Loop.FLAC'), name: 'ignored', suffix: 'Boucle' },
         'nonsense',
       ]),
     ).toEqual([
-      { id: 'a', path: song },
-      { id: 'e', path: absolute('Loop.FLAC') },
+      { id: 'a', path: song, suffix: 'song' },
+      { id: 'e', path: absolute('Loop.FLAC'), suffix: 'Boucle' },
     ]);
     expect(sanitizeTracks({ id: 'a' })).toEqual([]);
+  });
+
+  it('cleans up the suffixes; one missing, empty or invalid is the file name', () => {
+    const song = absolute('Été', 'Beach waves.mp3');
+    expect(
+      sanitizeTracks([
+        { id: 'a', path: song },
+        { id: 'b', path: absolute('b.mp3'), suffix: '' },
+        { id: 'c', path: absolute('c.mp3'), suffix: 42 },
+        { id: 'd', path: absolute('d.mp3'), suffix: ' AC/DC:  live ' },
+      ]).map((track) => track.suffix),
+    ).toEqual(['Beach waves', 'b', 'c', 'AC DC live']);
   });
 });
 
 describe('parseSettingsFile', () => {
   it('reads version 1, even after a byte order mark', () => {
-    const tracks = [{ id: 'song', path: absolute('song.mp3') }];
+    const tracks = [{ id: 'song', path: absolute('song.mp3'), suffix: 'Chanson' }];
     const text = JSON.stringify({ version: 1, settings: { recipe: RECIPE }, tracks });
     expect(parseSettingsFile(`\uFEFF${text}`)).toEqual({
       settings: { recipe: RECIPE, output: DEFAULT_SETTINGS.output },
       tracks,
     });
+  });
+
+  it('names the tracks saved without a suffix after their file', () => {
+    const tracks = [{ id: 'song', path: absolute('song.mp3') }];
+    const text = JSON.stringify({ version: 1, settings: { recipe: RECIPE }, tracks });
+    expect(parseSettingsFile(text)?.tracks).toEqual([
+      { id: 'song', path: absolute('song.mp3'), suffix: 'song' },
+    ]);
   });
 
   it('refuses what is not JSON, not an object, or of another version', () => {
@@ -184,7 +204,7 @@ describe('SettingsStore', () => {
 
   it('saves changes, and loads them back', async () => {
     const store = await SettingsStore.load(dataDir);
-    const tracks = [{ id: 'song', path: absolute('Été', 'song.mp3') }];
+    const tracks = [{ id: 'song', path: absolute('Été', 'song.mp3'), suffix: 'Plage 🌊' }];
     store.setTracks(tracks);
     const output: Settings['output'] = { location: 'folder', folder: path.resolve('/Sorties') };
     expect(store.update({ recipe: RECIPE })).toEqual({ ...DEFAULT_SETTINGS, recipe: RECIPE });
@@ -210,7 +230,7 @@ describe('SettingsStore', () => {
 
   it('forgets the recipe track when it leaves the audio list', async () => {
     const store = await SettingsStore.load(dataDir);
-    store.setTracks([{ id: 'song', path: absolute('song.mp3') }]);
+    store.setTracks([{ id: 'song', path: absolute('song.mp3'), suffix: 'song' }]);
     store.update({ recipe: RECIPE });
     store.setTracks([]);
     expect(store.settings().recipe.trackId).toBeNull();

@@ -2,7 +2,7 @@ import type { ComponentFixture } from '@angular/core/testing';
 import { TestBed } from '@angular/core/testing';
 import { DESKTOP } from '../../core/desktop';
 import { SettingsStore } from '../../core/settings-store';
-import { FakeDesktop, settle, text } from '../../testing/fake-desktop';
+import { audioTrack, FakeDesktop, settle, text } from '../../testing/fake-desktop';
 import { OutputSection } from './output-section';
 
 describe('OutputSection', () => {
@@ -37,6 +37,18 @@ describe('OutputSection', () => {
     settings.updateRecipe({ audio: 'keep', trimEnd: { amount: 0, unit: 'seconds' } });
     await render();
     expect(text(host.querySelector('.hint'))).toBe('Originals are never modified.');
+  });
+
+  it('names a replaced audio after the suffix of the audio file chosen', async () => {
+    desktop.emitTracks([audioTrack('waves', { suffix: 'Plage 🌊' })]);
+    settings.updateRecipe({ audio: 'replace', trackId: 'waves' });
+    await render();
+    expect(text(host.querySelector('.hint'))).toBe(
+      'Originals are never modified. Results are named after their video, like “clip (Plage 🌊).mov” for “clip.mov”.',
+    );
+    desktop.emitTracks([audioTrack('waves', { suffix: 'Vagues' })]);
+    await render();
+    expect(text(host.querySelector('.hint'))).toContain('“clip (Vagues).mov”');
   });
 
   it('saves in the folder chosen', async () => {

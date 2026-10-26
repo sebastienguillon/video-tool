@@ -52,6 +52,12 @@ export interface DesktopBridge {
   readonly chooseTracks: () => Promise<AddResult | null>;
   /** Forgets a track; the file itself is untouched. */
   readonly removeTrack: (id: string) => Promise<void>;
+  /**
+   * Sets what the names of results say of a track (`AudioTrack.suffix`), cleaned up by
+   * `trackSuffix`: what file names cannot hold becomes a space, and nothing left means the file's
+   * name. Resolves to the suffix kept; `null` when the track is no longer listed.
+   */
+  readonly setTrackSuffix: (id: string, suffix: string) => Promise<string | null>;
   readonly onTracksChanged: (listener: (tracks: readonly AudioTrack[]) => void) => () => void;
 
   // Settings, persisted.
@@ -79,6 +85,7 @@ export const IpcChannel = {
   addTracks: 'tracks:add',
   chooseTracks: 'tracks:choose',
   removeTrack: 'tracks:remove',
+  setTrackSuffix: 'tracks:set-suffix',
   tracksChanged: 'tracks:changed',
   getSettings: 'settings:get',
   updateSettings: 'settings:update',

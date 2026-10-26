@@ -133,13 +133,20 @@ source's format when it is MP4, M4V, MOV, MKV or WebM (a `.qt` file gives a `.mo
 (AVI, WMV, FLV, MPG, MPEG, M2TS, MTS, TS, 3GP, OGV) become MP4 when an exact cut re-encodes the
 video, and MKV otherwise, which takes whatever codec they hold. Names say what was done:
 
-| Treatments                 | Result for `Holiday.mov`           |
-| -------------------------- | ---------------------------------- |
-| Remove the audio           | `Holiday (no audio).mov`           |
-| Replace the audio          | `Holiday (new audio).mov`          |
-| Trim                       | `Holiday (trimmed).mov`            |
-| Remove the audio and trim  | `Holiday (no audio, trimmed).mov`  |
-| Replace the audio and trim | `Holiday (new audio, trimmed).mov` |
+| Treatments                                     | Result for `Holiday.mov`             |
+| ---------------------------------------------- | ------------------------------------ |
+| Remove the audio                               | `Holiday (no audio).mov`             |
+| Replace the audio with `Beach waves.mp3`       | `Holiday (Beach waves).mov`          |
+| Trim                                           | `Holiday (trimmed).mov`              |
+| Remove the audio and trim                      | `Holiday (no audio, trimmed).mov`    |
+| Replace the audio with `Beach waves.mp3`, trim | `Holiday (Beach waves, trimmed).mov` |
+
+A replaced audio is named by the suffix of its soundtrack: the soundtrack's file name without its
+extension, unless another is typed under it in the audio list. Each soundtrack keeps its own. What
+file names cannot hold on Windows, macOS or Linux (`< > : " / \ | ? *` and control characters)
+becomes a space, direction marks are left out, and a suffix keeps at most 120 bytes: 120 letters
+without accents, 60 accented, Greek or Cyrillic ones, 40 Chinese or Japanese characters. Leaving the
+field empty brings back the file name.
 
 When that name is taken, a number follows: `Holiday (no audio) 2.mov`, then 3, and so on. An
 existing file is never overwritten. A name too long for the file system is shortened.
@@ -322,6 +329,8 @@ The settings (the treatments last chosen, where results go) and the audio list a
 - The audio list holds paths: soundtracks stay where they are, and are only read. One whose file was
   moved or deleted stays listed as missing, and comes back when the file does. Removing it from the
   list leaves the file alone.
+- Each soundtrack is saved with its suffix (see [Output files](#output-files)), next to its path. A
+  soundtrack saved without one, by an earlier version, takes its file name.
 
 ## Releasing
 

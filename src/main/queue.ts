@@ -14,6 +14,7 @@ import { randomUUID } from 'node:crypto';
 import { statSync } from 'node:fs';
 import path from 'node:path';
 import { errorMessage } from './media/exec';
+import type { ReplacementTrack } from './media/job';
 import { JobError, pathKey, processVideo } from './media/job';
 import type { MediaTools } from './media/media-tools';
 import type { MediaProbe } from './media/probe';
@@ -49,7 +50,7 @@ export interface QueueOptions {
 interface Job {
   readonly recipe: Recipe;
   readonly output: OutputSettings;
-  readonly track: { readonly path: string } | null;
+  readonly track: ReplacementTrack | null;
 }
 
 interface Entry {
@@ -193,7 +194,7 @@ export class Queue {
    * when the recipe replaces the audio. While a run is going, the new items join its end, with
    * their own recipe. Throws when the recipe cannot run at all.
    */
-  start(recipe: Recipe, output: OutputSettings, track: { readonly path: string } | null): number {
+  start(recipe: Recipe, output: OutputSettings, track: ReplacementTrack | null): number {
     const issue = recipeIssue(recipe, track === null ? null : audioTrackOf(recipe, track));
     if (issue !== null) {
       throw new Error(issue);
@@ -442,7 +443,7 @@ function stateAfter(error: unknown, signal: AbortSignal): ItemState {
 }
 
 /** The audio list entry `recipeIssue` checks, for the replacement soundtrack given to `start`. */
-function audioTrackOf(recipe: Recipe, track: { readonly path: string }): AudioTrack {
+function audioTrackOf(recipe: Recipe, track: ReplacementTrack): AudioTrack {
   let present: boolean;
   try {
     present = statSync(track.path).isFile();
@@ -453,6 +454,7 @@ function audioTrackOf(recipe: Recipe, track: { readonly path: string }): AudioTr
     id: recipe.trackId ?? '',
     path: track.path,
     name: path.basename(track.path),
+    suffix: track.suffix,
     durationSec: null,
     status: present ? 'ok' : 'missing',
   };

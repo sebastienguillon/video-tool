@@ -238,10 +238,35 @@ describe('Queue', () => {
     );
     const replace: Recipe = { ...DEFAULT_RECIPE, audio: 'replace', trackId: 'song' };
     expect(() => queue.start(replace, BESIDE, null)).toThrow('Choose the replacement audio.');
-    expect(() => queue.start(replace, BESIDE, { path: path.resolve('gone', 'song.mp3') })).toThrow(
+    const gone = { path: path.resolve('gone', 'song.mp3'), suffix: 'song' };
+    expect(() => queue.start(replace, BESIDE, gone)).toThrow(
       'song.mp3 is missing: it was moved or deleted.',
     );
     expect(kinds(queue.list())).toEqual(['ready', 'ready', 'ready']);
+  });
+
+  it('gives the jobs the replacement soundtrack, with its suffix, when the audio is replaced', async () => {
+    const runs = controlRuns();
+    const { queue, until } = await readyQueue();
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'video-tool-track-'));
+    try {
+      const track = { path: path.join(dir, 'Beach waves.mp3'), suffix: 'Plage 🌊' };
+      await writeFile(track.path, '');
+      const replace: Recipe = { ...DEFAULT_RECIPE, audio: 'replace', trackId: 'song' };
+      expect(queue.start(replace, BESIDE, track)).toBe(3);
+      await until(() => runs.length === 1);
+      expect(runs[0]?.input.track).toEqual(track);
+      // A soundtrack given with a recipe that does not replace the audio is not used.
+      queue.cancel(null);
+      await until(() => !queue.busy());
+      queue.reset(queue.list().map((item) => item.id));
+      queue.start(REMOVE_AUDIO, BESIDE, track);
+      await until(() => runs.length === 2);
+      expect(runs[1]?.input.track).toBeNull();
+      queue.cancel(null);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it('processes one video at a time, in list order', async () => {

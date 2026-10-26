@@ -10,6 +10,7 @@ import type {
   TrimUnit,
 } from '@shared/model';
 import { AUDIO_EXTENSIONS, DEFAULT_RECIPE, DEFAULT_SETTINGS } from '@shared/model';
+import { trackSuffix } from '@shared/track-suffix';
 import { randomUUID } from 'node:crypto';
 import {
   closeSync,
@@ -34,6 +35,8 @@ const FORMAT_VERSION = 1;
 export interface SavedTrack {
   readonly id: string;
   readonly path: string;
+  /** See `AudioTrack.suffix`. */
+  readonly suffix: string;
 }
 
 /** Contents of `settings.json`, once read and sanitized. */
@@ -118,7 +121,10 @@ export function sanitizeSettings(value: unknown, trackIds: ReadonlySet<string>):
   };
 }
 
-/** Valid entries only: an id, an absolute path to an audio file; the first of duplicates wins. */
+/**
+ * Valid entries only: an id, an absolute path to an audio file; the first of duplicates wins. A
+ * missing or invalid suffix is the file's name (see `trackSuffix`).
+ */
 export function sanitizeTracks(value: unknown): SavedTrack[] {
   if (!Array.isArray(value)) {
     return [];
@@ -127,7 +133,7 @@ export function sanitizeTracks(value: unknown): SavedTrack[] {
   const keys = new Set<string>();
   const tracks: SavedTrack[] = [];
   for (const entry of value as unknown[]) {
-    const { id, path: file } = fields(entry);
+    const { id, path: file, suffix } = fields(entry);
     if (
       typeof id !== 'string' ||
       id === '' ||
@@ -141,7 +147,7 @@ export function sanitizeTracks(value: unknown): SavedTrack[] {
     if (!ids.has(id) && !keys.has(key)) {
       ids.add(id);
       keys.add(key);
-      tracks.push({ id, path: file });
+      tracks.push({ id, path: file, suffix: trackSuffix(suffix, path.basename(file)) });
     }
   }
   return tracks;
@@ -247,7 +253,7 @@ export class SettingsStore {
 
   /** Replaces the audio list. A recipe naming a track no longer listed forgets it. */
   setTracks(tracks: readonly SavedTrack[]): void {
-    this.savedTracks = tracks.map(({ id, path: file }) => ({ id, path: file }));
+    this.savedTracks = tracks.map(({ id, path: file, suffix }) => ({ id, path: file, suffix }));
     this.current = sanitizeSettings(this.current, this.trackIds());
     this.save();
   }

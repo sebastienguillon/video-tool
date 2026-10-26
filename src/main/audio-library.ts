@@ -1,6 +1,7 @@
 import { createLogger } from '@shared/log';
 import type { AddResult, AudioTrack } from '@shared/model';
 import { AUDIO_EXTENSIONS } from '@shared/model';
+import { trackSuffix } from '@shared/track-suffix';
 import { randomUUID } from 'node:crypto';
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -15,7 +16,7 @@ export type ProbeAudio = (file: string) => Promise<{ readonly durationSec: numbe
 export interface AudioLibraryOptions {
   /** The saved list, in its order. */
   readonly saved: readonly SavedTrack[];
-  /** Persists the whole list, after each addition or removal. */
+  /** Persists the whole list (ids, paths and suffixes), after each addition, removal or new suffix. */
   readonly save: (tracks: readonly SavedTrack[]) => void;
   /**
    * `null` without ffprobe. Tracks whose file exists are then `ok`, of unknown duration: nothing can
@@ -44,10 +45,11 @@ export class AudioLibrary {
 
   constructor(options: AudioLibraryOptions) {
     this.options = options;
-    this.entries = options.saved.map(({ id, path: file }) => ({
+    this.entries = options.saved.map(({ id, path: file, suffix }) => ({
       id,
       path: file,
       name: path.basename(file),
+      suffix,
       durationSec: null,
       status: 'probing',
     }));
@@ -85,6 +87,7 @@ export class AudioLibrary {
           id: randomUUID(),
           path: file,
           name: path.basename(file),
+          suffix: trackSuffix(null, path.basename(file)),
           durationSec: null,
           status: 'probing',
         });
@@ -110,6 +113,26 @@ export class AudioLibrary {
       this.persist();
       this.notify();
     }
+  }
+
+  /**
+   * Sets what the names of results say of a track (see `trackSuffix`: `text` is cleaned up, and
+   * the file's name takes the place of nothing). Returns the suffix kept; `null` when the track is
+   * not listed.
+   */
+  setSuffix(id: string, text: string): string | null {
+    const index = this.entries.findIndex((entry) => entry.id === id);
+    const entry = this.entries[index];
+    if (entry === undefined) {
+      return null;
+    }
+    const suffix = trackSuffix(text, entry.name);
+    if (suffix !== entry.suffix) {
+      this.entries = this.entries.with(index, { ...entry, suffix });
+      this.persist();
+      this.notify();
+    }
+    return suffix;
   }
 
   /** Checks every track again: files gone, back, or changed since they were probed. */
@@ -185,7 +208,9 @@ export class AudioLibrary {
   }
 
   private persist(): void {
-    this.options.save(this.entries.map(({ id, path: file }) => ({ id, path: file })));
+    this.options.save(
+      this.entries.map(({ id, path: file, suffix }) => ({ id, path: file, suffix })),
+    );
   }
 
   private notify(): void {
