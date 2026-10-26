@@ -4,51 +4,66 @@
  * (Linux), `docs/brand/icon.svg` and `assets/icon.svg`. Run it after changing the design:
  * `pnpm icons`.
  *
- * The icon is a play triangle between two trim brackets, in white on the brand orange: a video, and
- * the cut made to it. No text, since font rendering varies. Under 48 px, hand-drawn versions
- * snapped to the pixel grid replace the scaled-down drawing.
+ * The icon is a frame of film between two columns of perforations, the author's SG logo on it: in
+ * the logo's lime on the olive black of SG Tag, the author's other app. No text, since font
+ * rendering varies. Under 48 px, versions snapped to the pixel grid replace the scaled-down drawing.
  */
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import sharp from 'sharp';
 
-/** The brand orange. White on it reads at every size, in light and dark surroundings. */
-const GROUND = '#ea580c';
-const MOTIF = '#ffffff';
+/** The SG logo's lime, on SG Tag's olive black. The logo on the frame takes the ground's colour. */
+const GROUND = '#131510';
+const FILM = '#a8c70b';
 
 /** Two decimals: enough for a 1024 px drawing, and keeps the SVG files readable. */
 const n = (value: number): number => Math.round(value * 100) / 100;
 
 /**
- * The ground and its motif, for a ground of side `side` at (`at`, `at`). Proportions are fractions
- * of the side, so the macOS and full-bleed variants are the same drawing at two scales.
+ * The SG logo, as its own SVG draws it: on a 400 grid of circles of radius 100, a 40 stroke, a fill
+ * at 25%, and the lower left end cut on a slant by the clip.
+ */
+const LOGO_SHAPE =
+  'M100 200A100 100 0 1 1 200 100A100 100 0 0 0 300 200A100 100 0 1 1 200 300A100 100 0 0 0 100 200';
+
+/**
+ * The logo `width` wide, strokes included (440 on its grid), the centre of its grid at (x, y). A
+ * `stroke` heavier than the logo's 40 keeps it from fading into the frame at 16 px.
+ */
+function logo(x: number, y: number, width: number, stroke = 40): string {
+  const scale = width / 440;
+  return (
+    `<g transform="translate(${n(x - 200 * scale)} ${n(y - 200 * scale)}) ` +
+    `scale(${Math.round(scale * 10000) / 10000})">` +
+    '<defs><clipPath id="logo"><polygon points="-24,-24 424,-24 424,424 0,424 40,290 -24,290"/></clipPath></defs>' +
+    `<g clip-path="url(#logo)"><path d="${LOGO_SHAPE}" fill="${GROUND}" fill-opacity="0.25"/>` +
+    `<path d="${LOGO_SHAPE}M200 100A100 100 0 1 1 300 200M200 300A100 100 0 0 1 0 300" ` +
+    `fill="none" stroke="${GROUND}" stroke-width="${stroke}"/>` +
+    `<path d="M380 20L405 -5" stroke="${GROUND}" stroke-width="${stroke}"/></g></g>`
+  );
+}
+
+/**
+ * The ground, its perforations, the frame and the logo, for a ground of side `side` at (`at`, `at`).
+ * Proportions are fractions of the side, so the macOS and full-bleed variants are the same drawing
+ * at two scales.
  */
 function drawing(at: number, side: number): string {
   const centre = at + side / 2;
-  // Brackets, along their centre line: a bar with an arm at each end, pointing inwards. Rounded
-  // outer corners, square arm ends, so they read as brackets rather than as a frame.
-  const stroke = side * 0.08;
-  const reach = side * 0.275;
-  const half = side * 0.21;
-  const arm = side * 0.08;
-  const bracket = (direction: 1 | -1): string => {
-    const bar = centre - direction * reach;
-    const end = bar + direction * arm;
-    return (
-      `<path d="M${n(end)} ${n(centre - half)}H${n(bar)}V${n(centre + half)}H${n(end)}" ` +
-      `fill="none" stroke="${MOTIF}" stroke-width="${n(stroke)}" stroke-linejoin="round"/>`
-    );
-  };
-  // Play triangle, its corners rounded by a stroke of the same colour. It sits a little right of
-  // centre: a triangle's weight is on its base, so a centred one looks pushed to the left.
-  const height = side * 0.27;
-  const width = height * 0.92;
-  const left = centre - width / 2 + width * 0.06;
-  const play =
-    `<path d="M${n(left)} ${n(centre - height / 2)}L${n(left + width)} ${n(centre)}` +
-    `L${n(left)} ${n(centre + height / 2)}Z" fill="${MOTIF}" stroke="${MOTIF}" ` +
-    `stroke-width="${n(side * 0.05)}" stroke-linejoin="round"/>`;
   const ground = `<rect x="${n(at)}" y="${n(at)}" width="${n(side)}" height="${n(side)}" rx="${n(side * 0.2245)}" fill="${GROUND}"/>`;
-  return ground + bracket(1) + bracket(-1) + play;
+  // Seven holes a side, centred, spanning the frame's height.
+  const width = side * 0.066;
+  const height = side * 0.05;
+  let holes = '';
+  for (const x of [at + side * 0.0875, at + side * 0.9125]) {
+    for (let k = -3; k <= 3; k++) {
+      const y = centre + k * side * 0.112;
+      holes += `<rect x="${n(x - width / 2)}" y="${n(y - height / 2)}" width="${n(width)}" height="${n(height)}" rx="${n(side * 0.013)}"/>`;
+    }
+  }
+  const frame = `<rect x="${n(at + side * 0.185)}" y="${n(at + side * 0.14)}" width="${n(side * 0.63)}" height="${n(side * 0.72)}" rx="${n(side * 0.05)}"/>`;
+  // The logo sits a little right of and below the centre of its grid, where its weight is.
+  const mark = logo(centre + side * 0.004, centre + side * 0.006, side * 0.473);
+  return `${ground}<g fill="${FILM}">${holes}${frame}</g>${mark}`;
 }
 
 const svg = (size: number, body: string): string =>
@@ -69,28 +84,30 @@ const FULL = svg(1024, drawing(32, 960));
 const PROJECT = svg(1024, drawing(0, 1024));
 
 /**
- * Hand-drawn at 32 px: 2 px brackets 14 px tall with 2 px arms, around a 10 px triangle whose base
- * sits on a pixel edge.
+ * Snapped to the pixel grid at 32 px: five 2 px holes a side, 2 px apart, and a 16 by 20 px frame;
+ * the logo, 12 px wide, is the only part left to anti-aliasing.
  */
 const PX32 = svg(
   32,
   `<rect x="2" y="2" width="28" height="28" rx="6.5" fill="${GROUND}"/>` +
-    `<path fill="${MOTIF}" d="M11 9H8a1 1 0 0 0-1 1V22a1 1 0 0 0 1 1H11V21H9V11H11Z` +
-    `M21 9H24a1 1 0 0 1 1 1V22a1 1 0 0 1-1 1H21V21H23V11H21Z` +
-    `M12 11L20.66 16L12 21Z"/>`,
+    `<path fill="${FILM}" d="M4 7h2v2H4ZM4 11h2v2H4ZM4 15h2v2H4ZM4 19h2v2H4ZM4 23h2v2H4Z` +
+    `M26 7h2v2H26ZM26 11h2v2H26ZM26 15h2v2H26ZM26 19h2v2H26ZM26 23h2v2H26Z` +
+    `M9.5 6H22.5A1.5 1.5 0 0 1 24 7.5V24.5A1.5 1.5 0 0 1 22.5 26H9.5A1.5 1.5 0 0 1 8 24.5V7.5A1.5 1.5 0 0 1 9.5 6Z"/>${logo(16, 16, 12)}`,
 );
 
 /**
- * Hand-drawn at 16 px: 1 px brackets 10 px tall, square, around a 6 px triangle. Bolder brackets
- * crowd the triangle out at this size.
+ * Snapped to the pixel grid at 16 px: four 2 by 1 px holes a side, 2 px apart, and an 8 by 12 px
+ * frame holding the logo, 7.4 px wide, with strokes of 64 instead of 40.
  */
 const PX16 = svg(
   16,
   `<rect width="16" height="16" rx="3.5" fill="${GROUND}"/>` +
-    `<path fill="${MOTIF}" d="M3 3H6V4H4V12H6V13H3Z M13 3H10V4H12V12H10V13H13Z M6 5L11 8L6 11Z"/>`,
+    `<path fill="${FILM}" d="M1 3h2v1H1ZM1 6h2v1H1ZM1 9h2v1H1ZM1 12h2v1H1Z` +
+    `M13 3h2v1H13ZM13 6h2v1H13ZM13 9h2v1H13ZM13 12h2v1H13Z` +
+    `M5 2H11A1 1 0 0 1 12 3V13A1 1 0 0 1 11 14H5A1 1 0 0 1 4 13V3A1 1 0 0 1 5 2Z"/>${logo(8, 8, 7.4, 64)}`,
 );
 
-/** The source drawn at each size: hand-drawn below 48 px, scaled down from 1024 above. */
+/** The source drawn at each size: snapped to the pixel grid below 48 px, scaled down from 1024 above. */
 function sourceFor(size: number, large: string): string {
   if (size <= 16) {
     return PX16;

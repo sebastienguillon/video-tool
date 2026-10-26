@@ -111,11 +111,12 @@ Four commitments define Video Tool, and future work must not trade any of them a
 ## Brand Commitments
 
 - Name: **Video Tool**. Tagline: "Remove, swap and trim: quick treatments for a batch of videos."
-- App icon: a white play triangle between two white trim brackets, on the brand orange (`#ea580c`):
-  a video, and the cut made to it. No text, since font rendering varies. `scripts/build-icons.ts`
-  draws it (on Apple's grid with a drop shadow for macOS, nearly full bleed for Windows and Linux,
-  redrawn on the pixel grid at 16 and 32 px) and writes the installer icons, `docs/brand/icon.svg`
-  and `assets/icon.svg` (`pnpm icons`).
+- App icon: a frame of film between two columns of perforations, the author's SG logo on it. Lime
+  (`#a8c70b`, the logo's own colour) on olive black (`#131510`, the ground of SG Tag, the author's
+  other app); the logo is drawn in the ground's colour on the lime frame. No text, since font
+  rendering varies. `scripts/build-icons.ts` draws it (on Apple's grid with a drop shadow for
+  macOS, nearly full bleed for Windows and Linux, snapped to the pixel grid at 16 and 32 px) and
+  writes the installer icons, `docs/brand/icon.svg` and `assets/icon.svg` (`pnpm icons`).
 - No wordmark or lockups yet.
 
 ## Evidence on Hand
