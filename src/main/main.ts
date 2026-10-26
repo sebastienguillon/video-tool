@@ -7,6 +7,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { AudioLibrary } from './audio-library';
 import { addVideos, broadcast, parseStrings, registerIpc } from './ipc';
 import { loadMediaTools } from './media/media-tools';
+import { setAppMenu } from './menu';
 import { probeAudio } from './media/probe';
 import { renderThumbnail } from './media/thumbnail';
 import { APP_ORIGIN, contentSecurityPolicy, handleProtocols, registerSchemes } from './protocols';
@@ -81,6 +82,7 @@ async function main(): Promise<void> {
     version: '',
     copyright: 'Copyright © 2026 Sébastien Guillon',
   });
+  setAppMenu();
 
   const dataDir = app.getPath('userData');
   const [tools, store] = await Promise.all([

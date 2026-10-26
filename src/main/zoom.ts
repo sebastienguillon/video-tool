@@ -4,8 +4,8 @@ import type { Input, WebContents } from 'electron';
 import { isRecord } from './settings-store';
 
 /**
- * Half a zoom level, as Electron's View › Zoom In and Zoom Out: each level is 20% more (1.2 times),
- * and level 0 is 100%.
+ * Half a zoom level, as Electron's own View › Zoom In and Zoom Out: each level is 20% more (1.2
+ * times), and level 0 is 100%.
  */
 export const ZOOM_STEP = 0.5;
 /** From 48% to 299%: past that, the window is unusable. */
@@ -30,33 +30,26 @@ export interface ZoomOptions {
  * Zooms the page as browsers do: Ctrl (Cmd on macOS) with +, - or 0, and Ctrl + the mouse wheel;
  * on macOS, Cmd + scrolling and pinching the trackpad.
  *
- * Electron's default menu does have View › Zoom In, Zoom Out and Actual Size, but its shortcuts are
- * keys of a US keyboard: + only with Shift, no numpad, and on Windows no - on a layout that puts it
- * on another key (AZERTY, on the 6). Keys are read here as the characters they type, before the
- * menu sees them. Chromium reports Ctrl + wheel on Windows and Linux (`zoom-changed`), not on
- * macOS: there the preload sends the wheel events that zoom (`IpcChannel.wheelZoom`).
+ * The menu's View › Zoom In, Zoom Out and Actual Size have shortcuts too (see `setAppMenu`), but
+ * menu shortcuts are keys of a US keyboard: + only with Shift, no numpad, and on Windows no - on a
+ * layout that puts it on another key (AZERTY, on the 6). Keys are read here as the characters they
+ * type, before the menu sees them. Chromium reports Ctrl + wheel on Windows and Linux
+ * (`zoom-changed`), not on macOS: there the preload sends the wheel events that zoom
+ * (`IpcChannel.wheelZoom`).
  */
 export function handleZoom(contents: WebContents, { platform, isTrusted }: ZoomOptions): void {
-  const zoomBy = (steps: number): void => {
-    contents.zoomLevel = steppedZoomLevel(contents.zoomLevel, steps);
-  };
-
   contents.on('before-input-event', (event, input) => {
-    const key = zoomKey(input, platform);
-    if (key === null) {
+    const command = zoomKey(input, platform);
+    if (command === null) {
       return;
     }
     // The menu would zoom a second time on the keys it knows; the page has no use for them.
     event.preventDefault();
-    if (key === 'reset') {
-      contents.zoomLevel = 0;
-    } else {
-      zoomBy(key === 'in' ? 1 : -1);
-    }
+    zoom(contents, command);
   });
 
   contents.on('zoom-changed', (_event, direction) => {
-    zoomBy(direction === 'in' ? 1 : -1);
+    zoom(contents, direction);
   });
 
   const wheelZoom = new WheelZoom();
@@ -67,13 +60,19 @@ export function handleZoom(contents: WebContents, { platform, isTrusted }: ZoomO
     }
     const steps = wheelZoom.steps(wheel, contents.zoomFactor);
     if (steps !== 0) {
-      zoomBy(steps);
+      contents.zoomLevel = steppedZoomLevel(contents.zoomLevel, steps);
     }
   });
 }
 
-/** What a key asks of the zoom: in, out, or back to 100%. */
-export type ZoomKey = 'in' | 'out' | 'reset';
+/** In or out by a step, or back to 100%. */
+export type ZoomCommand = 'in' | 'out' | 'reset';
+
+/** Zooms the page of `contents` a step in or out, within the limits, or back to 100%. */
+export function zoom(contents: Pick<WebContents, 'zoomLevel'>, command: ZoomCommand): void {
+  contents.zoomLevel =
+    command === 'reset' ? 0 : steppedZoomLevel(contents.zoomLevel, command === 'in' ? 1 : -1);
+}
 
 /**
  * What a key press asks of the zoom, by the character it types: Ctrl (Cmd on macOS) with + or =,
@@ -82,7 +81,7 @@ export type ZoomKey = 'in' | 'out' | 'reset';
 export function zoomKey(
   input: Pick<Input, 'type' | 'key' | 'control' | 'meta' | 'alt'>,
   platform: NodeJS.Platform,
-): ZoomKey | null {
+): ZoomCommand | null {
   const modifier = platform === 'darwin' ? input.meta : input.control;
   if (input.type !== 'keyDown' || !modifier || input.alt) {
     return null;
@@ -100,15 +99,9 @@ export function zoomKey(
   }
 }
 
-/**
- * The zoom level `steps` steps from `level` (in when positive), within the limits. It never moves
- * the other way, even from beyond them (where the menu's Zoom In and Zoom Out can take it).
- */
+/** The zoom level `steps` steps from `level` (in when positive), within the limits. */
 export function steppedZoomLevel(level: number, steps: number): number {
-  const stepped = level + steps * ZOOM_STEP;
-  return steps > 0
-    ? Math.max(level, Math.min(stepped, MAX_ZOOM_LEVEL))
-    : Math.min(level, Math.max(stepped, MIN_ZOOM_LEVEL));
+  return Math.min(MAX_ZOOM_LEVEL, Math.max(MIN_ZOOM_LEVEL, level + steps * ZOOM_STEP));
 }
 
 /**

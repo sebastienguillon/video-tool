@@ -3,13 +3,14 @@ import { IpcChannel } from '@shared/desktop-api';
 import type { Input, WebContents } from 'electron';
 import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
-import type { ZoomKey } from './zoom';
+import type { ZoomCommand } from './zoom';
 import {
   handleZoom,
   MAX_ZOOM_LEVEL,
   MIN_ZOOM_LEVEL,
   steppedZoomLevel,
   WheelZoom,
+  zoom,
   ZOOM_STEP,
   zoomKey,
 } from './zoom';
@@ -22,11 +23,16 @@ function key(character: string, modifiers: Partial<KeyInput> = {}): KeyInput {
 
 describe('zoomKey', () => {
   it('reads keys as the characters they type, wherever the layout puts them', () => {
-    const expected: Record<string, ZoomKey> = { '+': 'in', '=': 'in', '-': 'out', '0': 'reset' };
-    for (const [character, zoom] of Object.entries(expected)) {
-      expect(zoomKey(key(character, { control: true }), 'win32'), character).toBe(zoom);
-      expect(zoomKey(key(character, { control: true }), 'linux'), character).toBe(zoom);
-      expect(zoomKey(key(character, { meta: true }), 'darwin'), character).toBe(zoom);
+    const expected: Record<string, ZoomCommand> = {
+      '+': 'in',
+      '=': 'in',
+      '-': 'out',
+      '0': 'reset',
+    };
+    for (const [character, command] of Object.entries(expected)) {
+      expect(zoomKey(key(character, { control: true }), 'win32'), character).toBe(command);
+      expect(zoomKey(key(character, { control: true }), 'linux'), character).toBe(command);
+      expect(zoomKey(key(character, { meta: true }), 'darwin'), character).toBe(command);
     }
   });
 
@@ -54,12 +60,17 @@ describe('steppedZoomLevel', () => {
     expect(steppedZoomLevel(MAX_ZOOM_LEVEL - ZOOM_STEP, 3)).toBe(MAX_ZOOM_LEVEL);
     expect(steppedZoomLevel(MIN_ZOOM_LEVEL, -1)).toBe(MIN_ZOOM_LEVEL);
   });
+});
 
-  it('never moves the other way from beyond them', () => {
-    expect(steppedZoomLevel(MAX_ZOOM_LEVEL + 2, 1)).toBe(MAX_ZOOM_LEVEL + 2);
-    expect(steppedZoomLevel(MAX_ZOOM_LEVEL + 2, -1)).toBe(MAX_ZOOM_LEVEL + 2 - ZOOM_STEP);
-    expect(steppedZoomLevel(MIN_ZOOM_LEVEL - 2, -1)).toBe(MIN_ZOOM_LEVEL - 2);
-    expect(steppedZoomLevel(MIN_ZOOM_LEVEL - 2, 1)).toBe(MIN_ZOOM_LEVEL - 2 + ZOOM_STEP);
+describe('zoom', () => {
+  it('steps in and out within the limits, and goes back to 100%', () => {
+    const contents = { zoomLevel: MAX_ZOOM_LEVEL };
+    zoom(contents, 'in');
+    expect(contents.zoomLevel).toBe(MAX_ZOOM_LEVEL);
+    zoom(contents, 'out');
+    expect(contents.zoomLevel).toBe(MAX_ZOOM_LEVEL - ZOOM_STEP);
+    zoom(contents, 'reset');
+    expect(contents.zoomLevel).toBe(0);
   });
 });
 
