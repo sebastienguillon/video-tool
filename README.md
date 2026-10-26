@@ -195,6 +195,40 @@ obligations: an LGPL build must come with its license text and a pointer to its 
 build (any with libx264 or libx265, as most ready-made builds are) must meet the GPL, which asks
 more.
 
+## Development
+
+With Node.js 24, pnpm 12 and ffmpeg installed (see [Requirements](#requirements)), from a clone:
+
+```sh
+pnpm install   # dependencies, and the git hooks
+pnpm dev       # the app, with live reload
+```
+
+`pnpm dev` starts the Angular dev server and Electron. Edits to the interface (`src/renderer`)
+show at once in the window; edits to the Electron side (`src/main`, `src/preload`) rebuild it and
+restart the app. It takes `ffmpeg` and `ffprobe` from the `PATH`.
+
+To build the app for the system you are on:
+
+```sh
+pnpm package       # installers, in release/
+pnpm package:dir   # only the app, unpacked: quicker, to try a build
+```
+
+Both build for the operating system and processor they run on, and only those: a Mac build is
+made on a Mac. CI makes the builds for all three systems (see [Releasing](#releasing)).
+
+| System  | `pnpm package`                                                      | `pnpm package:dir`                                           |
+| ------- | ------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Windows | `video-tool-<version>-win-x64-setup.exe`                            | `release/win-unpacked/Video Tool.exe`                        |
+| macOS   | `video-tool-<version>-mac-arm64.dmg` (`-x64` on Intel)              | `release/mac-arm64/Video Tool.app` (`release/mac/` on Intel) |
+| Linux   | `video-tool-<version>-linux-x86_64.AppImage` and `-linux-amd64.deb` | `release/linux-unpacked/video-tool`                          |
+
+Builds are not code-signed. On macOS, electron-builder still signs with a developer certificate it
+finds in the Keychain; `CSC_IDENTITY_AUTO_DISCOVERY=false pnpm package` stops it, as CI does.
+ffmpeg is not included, unless placed in `resources/bin/<mac|win|linux>/` before building (see
+[resources/bin](resources/bin/README.md)).
+
 ## Scripts
 
 | Command                                | What it does                                                                             |
