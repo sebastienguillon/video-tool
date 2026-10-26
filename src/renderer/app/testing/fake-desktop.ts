@@ -8,6 +8,7 @@ import type {
   VideoInfo,
 } from '@shared/model';
 import { DEFAULT_SETTINGS } from '@shared/model';
+import { trackSuffix } from '@shared/track-suffix';
 
 /** The bridge's methods. */
 type Method = {
@@ -109,14 +110,14 @@ export class FakeDesktop implements DesktopBridge {
     this.call('chooseTracks', [], () => Promise.resolve(null));
   readonly removeTrack = (id: string): Promise<void> =>
     this.call('removeTrack', [id], () => Promise.resolve());
-  /** Trims the suffix, or takes the file name for nothing, as the main process does (roughly). */
+  /** Keeps the suffix as the main process does. */
   readonly setTrackSuffix = (id: string, suffix: string): Promise<string | null> =>
     this.call('setTrackSuffix', [id, suffix], () => {
       const track = this.tracks.find((candidate) => candidate.id === id);
       if (track === undefined) {
         return Promise.resolve(null);
       }
-      const kept = suffix.trim() !== '' ? suffix.trim() : track.name.replace(/\.[^.]*$/, '');
+      const kept = trackSuffix(suffix, track.name);
       this.emitTracks(
         this.tracks.map((candidate) =>
           candidate.id === id ? { ...track, suffix: kept } : candidate,

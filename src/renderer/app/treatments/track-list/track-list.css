@@ -11,6 +11,8 @@
 }
 
 .list {
+  /* Holds the visually hidden descriptions: they scroll with it, and do not stretch the page. */
+  position: relative;
   max-height: 220px;
   margin: 0;
   padding: 4px;

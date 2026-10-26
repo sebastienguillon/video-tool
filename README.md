@@ -144,8 +144,9 @@ video, and MKV otherwise, which takes whatever codec they hold. Names say what w
 A replaced audio is named by the suffix of its soundtrack: the soundtrack's file name without its
 extension, unless another is typed under it in the audio list. Each soundtrack keeps its own. What
 file names cannot hold on Windows, macOS or Linux (`< > : " / \ | ? *` and control characters)
-becomes a space, direction marks are left out, and a suffix keeps at most 120 bytes (about 120
-letters, 40 in Chinese or Japanese). Leaving the field empty brings back the file name.
+becomes a space, direction marks are left out, and a suffix keeps at most 120 bytes: 120 letters
+without accents, 60 accented, Greek or Cyrillic ones, 40 Chinese or Japanese characters. Leaving the
+field empty brings back the file name.
 
 When that name is taken, a number follows: `Holiday (no audio) 2.mov`, then 3, and so on. An
 existing file is never overwritten. A name too long for the file system is shortened.

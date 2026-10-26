@@ -1,11 +1,11 @@
 import { createLogger } from '@shared/log';
 import type { AddResult, AudioTrack } from '@shared/model';
 import { AUDIO_EXTENSIONS } from '@shared/model';
+import { trackSuffix } from '@shared/track-suffix';
 import { randomUUID } from 'node:crypto';
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { SavedTrack } from './settings-store';
-import { trackSuffix } from './settings-store';
 import { expandPaths, pathKey } from './video-files';
 
 const log = createLogger('audio-library');
@@ -16,7 +16,7 @@ export type ProbeAudio = (file: string) => Promise<{ readonly durationSec: numbe
 export interface AudioLibraryOptions {
   /** The saved list, in its order. */
   readonly saved: readonly SavedTrack[];
-  /** Persists the whole list, after each addition or removal. */
+  /** Persists the whole list (ids, paths and suffixes), after each addition, removal or new suffix. */
   readonly save: (tracks: readonly SavedTrack[]) => void;
   /**
    * `null` without ffprobe. Tracks whose file exists are then `ok`, of unknown duration: nothing can
@@ -87,7 +87,7 @@ export class AudioLibrary {
           id: randomUUID(),
           path: file,
           name: path.basename(file),
-          suffix: trackSuffix(null, file),
+          suffix: trackSuffix(null, path.basename(file)),
           durationSec: null,
           status: 'probing',
         });
@@ -126,7 +126,7 @@ export class AudioLibrary {
     if (entry === undefined) {
       return null;
     }
-    const suffix = trackSuffix(text, entry.path);
+    const suffix = trackSuffix(text, entry.name);
     if (suffix !== entry.suffix) {
       this.entries = this.entries.with(index, { ...entry, suffix });
       this.persist();

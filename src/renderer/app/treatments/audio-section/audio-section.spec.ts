@@ -14,8 +14,15 @@ describe('AudioSection', () => {
   let host: HTMLElement;
   let play: MockInstance<HTMLMediaElement['play']>;
   let pause: MockInstance<HTMLMediaElement['pause']>;
+  let scrolled: Element[];
 
   beforeEach(async () => {
+    // Not implemented by jsdom either.
+    scrolled = [];
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this);
+    };
+
     // Not implemented by jsdom.
     play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
     pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
@@ -43,6 +50,7 @@ describe('AudioSection', () => {
   afterEach(() => {
     host.remove();
     vi.restoreAllMocks();
+    delete (Element.prototype as Partial<Element>).scrollIntoView;
   });
 
   async function render(): Promise<void> {
@@ -114,6 +122,29 @@ describe('AudioSection', () => {
     radios()[0]?.click();
     await render();
     expect(suffixFields().map((input) => input.value)).toEqual(['a']);
+    // In a long list, it could open out of sight.
+    expect(scrolled).toEqual([radios()[0]?.closest('li')]);
+  });
+
+  it('offers the file name as it would be kept, for an empty suffix', async () => {
+    desktop.emitTracks([audioTrack('b', { name: 'Live: Paris?.mp3', suffix: 'Live Paris' })]);
+    await render();
+    expect(suffixFields()[0]?.placeholder).toBe('Live Paris');
+  });
+
+  it('keeps what is typed as it is while another app is active', async () => {
+    const field = suffixFields()[0]!;
+    field.focus();
+    field.value = 'Beach ';
+    // The window lost the focus: the field keeps it, to get it back with the window.
+    field.dispatchEvent(new Event('blur'));
+    await render();
+    expect(desktop.callsTo('setTrackSuffix')).toEqual([]);
+    expect(field.value).toBe('Beach ');
+    field.value = 'Beach waves';
+    field.blur();
+    await render();
+    expect(desktop.callsTo('setTrackSuffix')).toEqual([['b', 'Beach waves']]);
   });
 
   it('saves the suffix typed, as the main process keeps it', async () => {

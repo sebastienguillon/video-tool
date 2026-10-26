@@ -53,9 +53,9 @@ export interface DesktopBridge {
   /** Forgets a track; the file itself is untouched. */
   readonly removeTrack: (id: string) => Promise<void>;
   /**
-   * Sets what the names of results say of a track (`AudioTrack.suffix`). What file names cannot
-   * hold is left out, and nothing left means the file's name. Resolves to the suffix kept; `null`
-   * when the track is no longer listed.
+   * Sets what the names of results say of a track (`AudioTrack.suffix`), cleaned up by
+   * `trackSuffix`: what file names cannot hold becomes a space, and nothing left means the file's
+   * name. Resolves to the suffix kept; `null` when the track is no longer listed.
    */
   readonly setTrackSuffix: (id: string, suffix: string) => Promise<string | null>;
   readonly onTracksChanged: (listener: (tracks: readonly AudioTrack[]) => void) => () => void;

@@ -184,6 +184,8 @@ describe.skipIf(ffmpegMissing)('processVideo', () => {
   interface RunOptions {
     readonly output?: OutputSettings;
     readonly track?: string;
+    /** Of `track`; its file name without the extension by default. */
+    readonly suffix?: string;
     readonly signal?: AbortSignal;
     readonly onProgress?: (progress: Progress) => void;
   }
@@ -199,7 +201,7 @@ describe.skipIf(ffmpegMissing)('processVideo', () => {
       track:
         options.track === undefined
           ? null
-          : { path: options.track, suffix: path.parse(options.track).name },
+          : { path: options.track, suffix: options.suffix ?? path.parse(options.track).name },
       signal: options.signal ?? new AbortController().signal,
       onProgress: options.onProgress ?? (() => undefined),
     });
@@ -523,9 +525,9 @@ describe.skipIf(ffmpegMissing)('processVideo', () => {
     const output = await run(
       file('ramp.mp4'),
       { audio: 'replace', trackId: 'tone', loop: true },
-      { track: file('tone1.m4a') },
+      { track: file('tone1.m4a'), suffix: 'Plage 🌊' },
     );
-    expect(path.basename(output)).toBe('ramp (tone1).mp4');
+    expect(path.basename(output)).toBe('ramp (Plage 🌊).mp4');
     expect((await audioOf(output)).durationSec).toBeCloseTo(3, 1);
     expect(Math.abs(((await audioOf(output)).durationSec ?? 0) - 3)).toBeLessThan(0.025);
     expect(await meanVolume(output, 2)).toBeGreaterThan(-40);

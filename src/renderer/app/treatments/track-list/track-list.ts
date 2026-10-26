@@ -1,17 +1,20 @@
 import type { ElementRef } from '@angular/core';
 import {
+  afterNextRender,
   Component,
   computed,
   DestroyRef,
   DOCUMENT,
   effect,
   inject,
+  Injector,
   signal,
   viewChild,
 } from '@angular/core';
 import { trackUrl } from '@shared/desktop-api';
 import type { AudioTrack } from '@shared/model';
 import { formatDuration } from '@shared/time';
+import { trackSuffix } from '@shared/track-suffix';
 import { FileDrop, TRACKS_DROP_ATTRIBUTE } from '../../core/file-drop';
 import { SettingsStore } from '../../core/settings-store';
 import { TracksStore } from '../../core/tracks-store';
@@ -38,6 +41,7 @@ export class TrackList {
   private readonly settings = inject(SettingsStore);
   private readonly drop = inject(FileDrop);
   private readonly document = inject(DOCUMENT);
+  private readonly injector = inject(Injector);
   private readonly player = viewChild<ElementRef<HTMLAudioElement>>('player');
   private readonly addButton = viewChild.required<ElementRef<HTMLButtonElement>>('addButton');
 
@@ -79,13 +83,30 @@ export class TrackList {
     }
   }
 
-  protected select(track: AudioTrack): void {
+  /** The suffix field opens under the chosen row: the list scrolls to show it, if it has to. */
+  protected select(track: AudioTrack, row: HTMLElement): void {
     this.store.select(track.id);
+    afterNextRender(
+      () => {
+        row.scrollIntoView({ block: 'nearest' });
+      },
+      { injector: this.injector },
+    );
   }
 
-  /** What an empty suffix stands for: the file name, without its extension. */
+  /** What an empty suffix stands for: the file name without its extension, as the suffix keeps it. */
   protected defaultSuffix(track: AudioTrack): string {
-    return track.name.replace(/\.[^.]*$/, '');
+    return trackSuffix(null, track.name);
+  }
+
+  /**
+   * The field lost the focus. Unless the whole window did (another app was activated: the field is
+   * still being edited, and stays as typed), the suffix is saved.
+   */
+  protected leaveSuffix(track: AudioTrack, input: HTMLInputElement): void {
+    if (this.document.activeElement !== input) {
+      void this.saveSuffix(track, input);
+    }
   }
 
   /**
