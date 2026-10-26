@@ -58,6 +58,19 @@ describe('AudioSection', () => {
   const status = (): string => text(host.querySelector('app-track-list [role="status"]'));
   const undecodable = (): Promise<void> =>
     Promise.reject(new DOMException('No decoder', 'NotSupportedError'));
+  const suffixFields = (): HTMLInputElement[] => [
+    ...host.querySelectorAll<HTMLInputElement>('.suffix input'),
+  ];
+  /** Types `value` in the suffix field, then presses `key` or leaves the field. */
+  const typeSuffix = async (value: string, key?: 'Enter' | 'Escape'): Promise<void> => {
+    const field = suffixFields()[0]!;
+    field.value = value;
+    field.dispatchEvent(new Event('input'));
+    field.dispatchEvent(
+      key === undefined ? new Event('blur') : new KeyboardEvent('keydown', { key, bubbles: true }),
+    );
+    await render();
+  };
   const mode = async (value: string): Promise<void> => {
     host.querySelector<HTMLInputElement>(`input[name="audio-mode"][value="${value}"]`)?.click();
     await render();
@@ -86,6 +99,54 @@ describe('AudioSection', () => {
     expect(radios().map((radio) => radio.checked)).toEqual([false, true, false, false]);
     expect(button('Play c.mp3')?.disabled).toBe(true);
     expect(button('Play d.mp3')?.disabled).toBe(false);
+  });
+
+  it('shows the suffix of the audio file chosen, under it', async () => {
+    expect(suffixFields()).toHaveLength(1);
+    const field = suffixFields()[0]!;
+    expect(field.value).toBe('b');
+    expect(field.placeholder).toBe('b');
+    expect(field.closest('li')?.classList).toContain('selected');
+    expect(text(host.querySelector(`label[for="${field.id}"]`))).toBe('Suffix');
+    expect(text(host.querySelector(`#${field.getAttribute('aria-describedby') ?? ''}`))).toBe(
+      'Added to the names of the results. Left empty, the file name is used.',
+    );
+    radios()[0]?.click();
+    await render();
+    expect(suffixFields().map((input) => input.value)).toEqual(['a']);
+  });
+
+  it('saves the suffix typed, as the main process keeps it', async () => {
+    await typeSuffix(' Plage 🌊 ');
+    expect(desktop.callsTo('setTrackSuffix')).toEqual([['b', ' Plage 🌊 ']]);
+    expect(suffixFields()[0]?.value).toBe('Plage 🌊');
+    expect(desktop.tracks[1]?.suffix).toBe('Plage 🌊');
+
+    await typeSuffix('Vagues', 'Enter');
+    expect(desktop.callsTo('setTrackSuffix').at(-1)).toEqual(['b', 'Vagues']);
+    expect(suffixFields()[0]?.value).toBe('Vagues');
+
+    // Nothing typed: the file name.
+    await typeSuffix('');
+    expect(desktop.callsTo('setTrackSuffix').at(-1)).toEqual(['b', '']);
+    expect(suffixFields()[0]?.value).toBe('b');
+  });
+
+  it('saves nothing when the suffix is unchanged, or given up with Escape', async () => {
+    await typeSuffix('b');
+    await typeSuffix('oops', 'Escape');
+    expect(suffixFields()[0]?.value).toBe('b');
+    await typeSuffix('b');
+    expect(desktop.callsTo('setTrackSuffix')).toEqual([]);
+  });
+
+  it('says when a suffix cannot be changed, and shows the one kept', async () => {
+    desktop.respond('setTrackSuffix', () =>
+      Promise.reject(new Error('The data folder is locked.')),
+    );
+    await typeSuffix('Plage');
+    expect(status()).toBe('Cannot change the suffix of b.mp3: The data folder is locked.');
+    expect(suffixFields()[0]?.value).toBe('b');
   });
 
   it('uses the audio file chosen', async () => {

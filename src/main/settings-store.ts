@@ -34,6 +34,8 @@ const FORMAT_VERSION = 1;
 export interface SavedTrack {
   readonly id: string;
   readonly path: string;
+  /** See `AudioTrack.suffix`. */
+  readonly suffix: string;
 }
 
 /** Contents of `settings.json`, once read and sanitized. */
@@ -47,6 +49,12 @@ const AUDIO_MODES: Readonly<Record<AudioMode, true>> = { keep: true, remove: tru
 const TRIM_UNITS: Readonly<Record<TrimUnit, true>> = { seconds: true, frames: true };
 const CUT_PRECISIONS: Readonly<Record<CutPrecision, true>> = { exact: true, fast: true };
 const OUTPUT_LOCATIONS: Readonly<Record<OutputLocation, true>> = { beside: true, folder: true };
+
+/**
+ * Longest track suffix, in UTF-8 bytes. With the other labels, a copy number and the extension, a
+ * result's name keeps more than 100 bytes for the name of its video, of the 255 file systems allow.
+ */
+export const MAX_SUFFIX_BYTES = 120;
 
 const memberOf =
   <T extends string>(members: Readonly<Record<T, true>>) =>
@@ -118,7 +126,47 @@ export function sanitizeSettings(value: unknown, trackIds: ReadonlySet<string>):
   };
 }
 
-/** Valid entries only: an id, an absolute path to an audio file; the first of duplicates wins. */
+/**
+ * What the name of a result says of the soundtrack `file` when it replaced the audio: `text`
+ * without what file names cannot hold on Windows, macOS or Linux (`<>:"/\|?*` and control
+ * characters, each made a space), nor the direction marks that would show the end of the name
+ * reversed; white space collapsed and trimmed, and at most `MAX_SUFFIX_BYTES` long. When that
+ * leaves nothing, or `text` is not a string, the name of `file` without its extension, cleaned the
+ * same way.
+ */
+export function trackSuffix(text: unknown, file: string): string {
+  const chosen = typeof text === 'string' ? cleanSuffix(text) : '';
+  if (chosen !== '') {
+    return chosen;
+  }
+  const name = cleanSuffix(path.parse(file).name);
+  return name !== '' ? name : 'new audio';
+}
+
+function cleanSuffix(text: string): string {
+  const clean = text
+    .replace(/[\p{Cc}<>:"/\\|?*]/gu, ' ')
+    .replace(/[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/gu, '')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  if (Buffer.byteLength(clean, 'utf8') <= MAX_SUFFIX_BYTES) {
+    return clean;
+  }
+  // By whole characters: accents and emoji stay intact.
+  let kept = '';
+  for (const { segment } of new Intl.Segmenter().segment(clean)) {
+    if (Buffer.byteLength(kept + segment, 'utf8') > MAX_SUFFIX_BYTES) {
+      break;
+    }
+    kept += segment;
+  }
+  return kept.trimEnd();
+}
+
+/**
+ * Valid entries only: an id, an absolute path to an audio file; the first of duplicates wins. A
+ * missing or invalid suffix is the file's name (see `trackSuffix`).
+ */
 export function sanitizeTracks(value: unknown): SavedTrack[] {
   if (!Array.isArray(value)) {
     return [];
@@ -127,7 +175,7 @@ export function sanitizeTracks(value: unknown): SavedTrack[] {
   const keys = new Set<string>();
   const tracks: SavedTrack[] = [];
   for (const entry of value as unknown[]) {
-    const { id, path: file } = fields(entry);
+    const { id, path: file, suffix } = fields(entry);
     if (
       typeof id !== 'string' ||
       id === '' ||
@@ -141,7 +189,7 @@ export function sanitizeTracks(value: unknown): SavedTrack[] {
     if (!ids.has(id) && !keys.has(key)) {
       ids.add(id);
       keys.add(key);
-      tracks.push({ id, path: file });
+      tracks.push({ id, path: file, suffix: trackSuffix(suffix, file) });
     }
   }
   return tracks;
@@ -247,7 +295,7 @@ export class SettingsStore {
 
   /** Replaces the audio list. A recipe naming a track no longer listed forgets it. */
   setTracks(tracks: readonly SavedTrack[]): void {
-    this.savedTracks = tracks.map(({ id, path: file }) => ({ id, path: file }));
+    this.savedTracks = tracks.map(({ id, path: file, suffix }) => ({ id, path: file, suffix }));
     this.current = sanitizeSettings(this.current, this.trackIds());
     this.save();
   }

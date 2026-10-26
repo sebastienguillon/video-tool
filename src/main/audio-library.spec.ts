@@ -65,12 +65,12 @@ describe('AudioLibrary', () => {
     const library = create();
     const result = await library.add([song, loop, notAudio, music, path.join(music, 'gone.mp3')]);
     expect(result).toEqual({ added: 2, duplicates: 0, ignored: 3, truncated: false });
-    expect(library.list().map((track) => [track.name, track.status])).toEqual([
-      ['Été.mp3', 'probing'],
-      ['loop.WAV', 'probing'],
+    expect(library.list().map((track) => [track.name, track.suffix, track.status])).toEqual([
+      ['Été.mp3', 'Été', 'probing'],
+      ['loop.WAV', 'loop', 'probing'],
     ]);
     expect(saves.at(-1)).toEqual(
-      library.list().map(({ id, path: target }) => ({ id, path: target })),
+      library.list().map(({ id, path: target, suffix }) => ({ id, path: target, suffix })),
     );
 
     await settle(library);
@@ -112,7 +112,7 @@ describe('AudioLibrary', () => {
 
   it('keeps a missing track listed, and probes it again once it is back', async () => {
     const moved = path.join(root, 'moved.mp3');
-    const library = create({ saved: [{ id: 'kept', path: song }] });
+    const library = create({ saved: [{ id: 'kept', path: song, suffix: 'Été' }] });
     await settle(library);
     expect(library.track('kept')).toMatchObject({ status: 'ok', durationSec: 61.5 });
 
@@ -132,7 +132,7 @@ describe('AudioLibrary', () => {
   it('probes a file again only when it changed', async () => {
     const changing = file('changing.mp3');
     const library = create({
-      saved: [{ id: 'changing', path: changing }],
+      saved: [{ id: 'changing', path: changing, suffix: 'changing' }],
       probe: probeOf({ 'changing.mp3': 10 }),
     });
     await settle(library);
@@ -170,7 +170,36 @@ describe('AudioLibrary', () => {
     expect(library.list().map((track) => track.id)).toEqual([second!.id]);
     expect(library.resolve(first!.id)).toBeNull();
     expect(await library.check(first!.id)).toBeNull();
-    expect(saves.at(-1)).toEqual([{ id: second!.id, path: loop }]);
+    expect(saves.at(-1)).toEqual([{ id: second!.id, path: loop, suffix: 'loop' }]);
+  });
+
+  it('keeps the suffix saved, and saves the one chosen, cleaned up', async () => {
+    const library = create({ saved: [{ id: 'kept', path: song, suffix: 'Plage' }] });
+    expect(library.track('kept')?.suffix).toBe('Plage');
+    await settle(library);
+    changes.length = 0;
+
+    expect(library.setSuffix('kept', ' Vagues / mer ')).toBe('Vagues mer');
+    expect(library.track('kept')?.suffix).toBe('Vagues mer');
+    expect(saves.at(-1)).toEqual([{ id: 'kept', path: song, suffix: 'Vagues mer' }]);
+    await nextTick();
+    expect(changes.at(-1)?.[0]?.suffix).toBe('Vagues mer');
+
+    // Nothing left: the file name, without its extension.
+    expect(library.setSuffix('kept', ' ? ')).toBe('Été');
+    expect(saves.at(-1)).toEqual([{ id: 'kept', path: song, suffix: 'Été' }]);
+    await nextTick();
+
+    // The same suffix again changes nothing.
+    const saved = saves.length;
+    changes.length = 0;
+    expect(library.setSuffix('kept', 'Été ')).toBe('Été');
+    await nextTick();
+    expect(saves).toHaveLength(saved);
+    expect(changes).toEqual([]);
+
+    expect(library.setSuffix('gone', 'Plage')).toBeNull();
+    expect(saves).toHaveLength(saved);
   });
 
   it('announces changes made in the same tick once', async () => {

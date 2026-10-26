@@ -13,6 +13,7 @@ import {
   sanitizeTracks,
   SETTINGS_FILE,
   SettingsStore,
+  trackSuffix,
 } from './settings-store';
 
 const renames = vi.hoisted((): [string, string][] => []);
@@ -118,25 +119,77 @@ describe('sanitizeTracks', () => {
         { id: 'c', path: 'relative.mp3' },
         { id: 'd', path: absolute('picture.jpg') },
         { id: '', path: absolute('nameless.mp3') },
-        { id: 'e', path: absolute('Loop.FLAC'), name: 'ignored' },
+        { id: 'e', path: absolute('Loop.FLAC'), name: 'ignored', suffix: 'Boucle' },
         'nonsense',
       ]),
     ).toEqual([
-      { id: 'a', path: song },
-      { id: 'e', path: absolute('Loop.FLAC') },
+      { id: 'a', path: song, suffix: 'song' },
+      { id: 'e', path: absolute('Loop.FLAC'), suffix: 'Boucle' },
     ]);
     expect(sanitizeTracks({ id: 'a' })).toEqual([]);
+  });
+
+  it('cleans up the suffixes; one missing, empty or invalid is the file name', () => {
+    const song = absolute('Été', 'Beach waves.mp3');
+    expect(
+      sanitizeTracks([
+        { id: 'a', path: song },
+        { id: 'b', path: absolute('b.mp3'), suffix: '' },
+        { id: 'c', path: absolute('c.mp3'), suffix: 42 },
+        { id: 'd', path: absolute('d.mp3'), suffix: ' AC/DC:  live ' },
+      ]).map((track) => track.suffix),
+    ).toEqual(['Beach waves', 'b', 'c', 'AC DC live']);
+  });
+});
+
+describe('trackSuffix', () => {
+  const song = absolute('Musique', 'Été 日本.v2.mp3');
+
+  it('is the file name without its extension, unless another is chosen', () => {
+    expect(trackSuffix(null, song)).toBe('Été 日本.v2');
+    expect(trackSuffix('', song)).toBe('Été 日本.v2');
+    expect(trackSuffix(' \t ', song)).toBe('Été 日本.v2');
+    expect(trackSuffix('Plage 🌊', song)).toBe('Plage 🌊');
+  });
+
+  it('leaves out what file names cannot hold', () => {
+    expect(trackSuffix('a<b>c:d"e/f\\g|h?i*j', song)).toBe('a b c d e f g h i j');
+    expect(trackSuffix('line\nbreak\u0000end\u007F', song)).toBe('line break end');
+    expect(trackSuffix('  many   spaces\u00A0 ', song)).toBe('many spaces');
+    // Direction marks would show the end of the name, its extension included, reversed.
+    expect(trackSuffix('evil\u202Egpj.exe', song)).toBe('evilgpj.exe');
+    expect(trackSuffix('???', song)).toBe('Été 日本.v2');
+    // Nothing left of the file name either.
+    expect(trackSuffix('', absolute('?.mp3'))).toBe('new audio');
+  });
+
+  it('is at most 120 bytes long, cut between characters', () => {
+    expect(trackSuffix('a'.repeat(200), song)).toBe('a'.repeat(120));
+    // 4 bytes each: 30 of them fit.
+    expect(trackSuffix('🌊'.repeat(40), song)).toBe('🌊'.repeat(30));
+    // 3 bytes each: the next one does not fit after the space, which is trimmed.
+    expect(trackSuffix(`${'日'.repeat(39)} 本本`, song)).toBe('日'.repeat(39));
+    // A flag is 8 bytes: one that does not fit whole is left out.
+    expect(trackSuffix(`${'a'.repeat(115)}🇫🇷`, song)).toBe('a'.repeat(115));
   });
 });
 
 describe('parseSettingsFile', () => {
   it('reads version 1, even after a byte order mark', () => {
-    const tracks = [{ id: 'song', path: absolute('song.mp3') }];
+    const tracks = [{ id: 'song', path: absolute('song.mp3'), suffix: 'Chanson' }];
     const text = JSON.stringify({ version: 1, settings: { recipe: RECIPE }, tracks });
     expect(parseSettingsFile(`\uFEFF${text}`)).toEqual({
       settings: { recipe: RECIPE, output: DEFAULT_SETTINGS.output },
       tracks,
     });
+  });
+
+  it('names the tracks saved without a suffix after their file', () => {
+    const tracks = [{ id: 'song', path: absolute('song.mp3') }];
+    const text = JSON.stringify({ version: 1, settings: { recipe: RECIPE }, tracks });
+    expect(parseSettingsFile(text)?.tracks).toEqual([
+      { id: 'song', path: absolute('song.mp3'), suffix: 'song' },
+    ]);
   });
 
   it('refuses what is not JSON, not an object, or of another version', () => {
@@ -184,7 +237,7 @@ describe('SettingsStore', () => {
 
   it('saves changes, and loads them back', async () => {
     const store = await SettingsStore.load(dataDir);
-    const tracks = [{ id: 'song', path: absolute('Été', 'song.mp3') }];
+    const tracks = [{ id: 'song', path: absolute('Été', 'song.mp3'), suffix: 'Plage 🌊' }];
     store.setTracks(tracks);
     const output: Settings['output'] = { location: 'folder', folder: path.resolve('/Sorties') };
     expect(store.update({ recipe: RECIPE })).toEqual({ ...DEFAULT_SETTINGS, recipe: RECIPE });
@@ -210,7 +263,7 @@ describe('SettingsStore', () => {
 
   it('forgets the recipe track when it leaves the audio list', async () => {
     const store = await SettingsStore.load(dataDir);
-    store.setTracks([{ id: 'song', path: absolute('song.mp3') }]);
+    store.setTracks([{ id: 'song', path: absolute('song.mp3'), suffix: 'song' }]);
     store.update({ recipe: RECIPE });
     store.setTracks([]);
     expect(store.settings().recipe.trackId).toBeNull();

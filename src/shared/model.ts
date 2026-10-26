@@ -61,6 +61,11 @@ export interface AudioTrack {
   readonly path: string;
   /** File name, with its extension. */
   readonly name: string;
+  /**
+   * What the name of a result says when this track replaced its audio: `clip (<suffix>).mp4`. The
+   * file name without its extension, unless the user chose another.
+   */
+  readonly suffix: string;
   /** `null` until probed, or when the file is missing or unreadable. */
   readonly durationSec: number | null;
   readonly status: 'probing' | 'ok' | 'missing' | 'unreadable';

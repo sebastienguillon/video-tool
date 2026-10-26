@@ -16,6 +16,7 @@ import {
   parseRecipe,
   parseSettingsPatch,
   parseStrings,
+  parseSuffix,
   toolsIssue,
 } from './ipc';
 import type { MediaTools } from './media/media-tools';
@@ -111,6 +112,16 @@ describe('parseId, parseItemFile and parseClearScope', () => {
     expect(parseClearScope('all')).toBe('all');
     expect(parseClearScope('finished')).toBe('finished');
     expect(() => parseClearScope('done')).toThrow('Invalid scope.');
+  });
+});
+
+describe('parseSuffix', () => {
+  it('takes any string, for the audio list to clean up, but not a whole file', () => {
+    expect(parseSuffix(' Plage / 🌊 ')).toBe(' Plage / 🌊 ');
+    expect(parseSuffix('')).toBe('');
+    expect(() => parseSuffix(null)).toThrow('Invalid suffix.');
+    expect(() => parseSuffix(['Plage'])).toThrow('Invalid suffix.');
+    expect(() => parseSuffix('a'.repeat(10_001))).toThrow('Invalid suffix.');
   });
 });
 

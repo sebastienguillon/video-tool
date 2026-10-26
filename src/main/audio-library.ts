@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { SavedTrack } from './settings-store';
+import { trackSuffix } from './settings-store';
 import { expandPaths, pathKey } from './video-files';
 
 const log = createLogger('audio-library');
@@ -44,10 +45,11 @@ export class AudioLibrary {
 
   constructor(options: AudioLibraryOptions) {
     this.options = options;
-    this.entries = options.saved.map(({ id, path: file }) => ({
+    this.entries = options.saved.map(({ id, path: file, suffix }) => ({
       id,
       path: file,
       name: path.basename(file),
+      suffix,
       durationSec: null,
       status: 'probing',
     }));
@@ -85,6 +87,7 @@ export class AudioLibrary {
           id: randomUUID(),
           path: file,
           name: path.basename(file),
+          suffix: trackSuffix(null, file),
           durationSec: null,
           status: 'probing',
         });
@@ -110,6 +113,26 @@ export class AudioLibrary {
       this.persist();
       this.notify();
     }
+  }
+
+  /**
+   * Sets what the names of results say of a track (see `trackSuffix`: `text` is cleaned up, and
+   * the file's name takes the place of nothing). Returns the suffix kept; `null` when the track is
+   * not listed.
+   */
+  setSuffix(id: string, text: string): string | null {
+    const index = this.entries.findIndex((entry) => entry.id === id);
+    const entry = this.entries[index];
+    if (entry === undefined) {
+      return null;
+    }
+    const suffix = trackSuffix(text, entry.path);
+    if (suffix !== entry.suffix) {
+      this.entries = this.entries.with(index, { ...entry, suffix });
+      this.persist();
+      this.notify();
+    }
+    return suffix;
   }
 
   /** Checks every track again: files gone, back, or changed since they were probed. */
@@ -185,7 +208,9 @@ export class AudioLibrary {
   }
 
   private persist(): void {
-    this.options.save(this.entries.map(({ id, path: file }) => ({ id, path: file })));
+    this.options.save(
+      this.entries.map(({ id, path: file, suffix }) => ({ id, path: file, suffix })),
+    );
   }
 
   private notify(): void {

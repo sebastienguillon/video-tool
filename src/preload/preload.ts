@@ -50,6 +50,7 @@ const bridge: DesktopBridge = {
   addTracks: invoke('addTracks'),
   chooseTracks: invoke('chooseTracks'),
   removeTrack: invoke('removeTrack'),
+  setTrackSuffix: invoke('setTrackSuffix'),
   onTracksChanged: (listener) =>
     subscribe(IpcChannel.tracksChanged, (tracks) => {
       listener(tracks as readonly AudioTrack[]);

@@ -91,9 +91,10 @@ Four commitments define Video Tool, and future work must not trade any of them a
   re-encodes the video.
 - Output: next to each source (the default) or in a chosen output folder. The format of the source
   is kept for MP4, M4V, MOV, MKV and WebM (QT gives MOV); others become MP4 when re-encoded, MKV
-  when copied. Names say what was done: `<name> (no audio).<ext>`, `<name> (new audio).<ext>`,
-  `<name> (trimmed).<ext>`, combined as `<name> (no audio, trimmed).<ext>`; when taken,
-  `<name> (no audio) 2.<ext>`, 3, and so on. Metadata and chapters are kept, and subtitles when the
+  when copied. Names say what was done: `<name> (no audio).<ext>`, `<name> (<suffix>).<ext>`,
+  `<name> (trimmed).<ext>`, combined as `<name> (no audio, trimmed).<ext>`; the `<suffix>` of a
+  replaced audio is the soundtrack's, its file name without the extension unless the user typed
+  another in the audio list. When taken, `<name> (no audio) 2.<ext>`, 3, and so on. Metadata and chapters are kept, and subtitles when the
   result keeps the source's format and can hold them as they are.
 - Processing: one ffmpeg process at a time, every treatment in one pass. Videos can be canceled one
   by one or all at once, and failed or canceled ones run again. A treatment that cannot apply to a

@@ -83,6 +83,31 @@ export class TrackList {
     this.store.select(track.id);
   }
 
+  /** What an empty suffix stands for: the file name, without its extension. */
+  protected defaultSuffix(track: AudioTrack): string {
+    return track.name.replace(/\.[^.]*$/, '');
+  }
+
+  /**
+   * Saves the suffix typed for `track`, then shows the one kept: cleaned up, or the file name for
+   * nothing. Unless the user typed on meanwhile.
+   */
+  protected async saveSuffix(track: AudioTrack, input: HTMLInputElement): Promise<void> {
+    const typed = input.value;
+    if (typed === track.suffix) {
+      return;
+    }
+    const kept = await this.store.setSuffix(track, typed);
+    if (input.value === typed) {
+      input.value = kept ?? this.suffixOf(track);
+    }
+  }
+
+  /** Escape gives up what was typed. */
+  protected revertSuffix(track: AudioTrack, input: HTMLInputElement): void {
+    input.value = this.suffixOf(track);
+  }
+
   protected toggle(track: AudioTrack): void {
     const audio = this.player()?.nativeElement;
     if (!audio) {
@@ -128,6 +153,11 @@ export class TrackList {
       (neighbour?.querySelector('input') ?? this.addButton().nativeElement).focus();
     }
     void this.store.remove(track);
+  }
+
+  /** The suffix of `track` as listed now: it may have changed since `track` was. */
+  private suffixOf(track: AudioTrack): string {
+    return this.tracks().find((candidate) => candidate.id === track.id)?.suffix ?? track.suffix;
   }
 
   private stop(): void {

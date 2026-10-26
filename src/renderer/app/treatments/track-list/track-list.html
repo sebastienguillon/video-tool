@@ -38,6 +38,28 @@
           >
             <app-icon name="x" />
           </button>
+          @if (selectedId() === track.id) {
+            <div class="suffix">
+              <label class="suffix-label" [for]="`${id}-suffix`">Suffix</label>
+              <input
+                #suffix
+                type="text"
+                class="input"
+                autocomplete="off"
+                spellcheck="false"
+                [id]="`${id}-suffix`"
+                [attr.aria-describedby]="`${id}-suffix-hint`"
+                [placeholder]="defaultSuffix(track)"
+                [value]="track.suffix"
+                (blur)="saveSuffix(track, suffix)"
+                (keydown.enter)="saveSuffix(track, suffix)"
+                (keydown.escape)="revertSuffix(track, suffix)"
+              />
+              <p class="visually-hidden" [id]="`${id}-suffix-hint`">
+                Added to the names of the results. Left empty, the file name is used.
+              </p>
+            </div>
+          }
         </li>
       }
     </ul>

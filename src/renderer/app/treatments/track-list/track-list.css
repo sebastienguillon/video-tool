@@ -20,6 +20,7 @@
 
 .track {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   padding: 2px 2px 2px 8px;
@@ -58,6 +59,26 @@
   color: var(--text-muted);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+}
+
+/* What results are named by, on a line of its own under the chosen track, past its radio button. */
+.suffix {
+  display: flex;
+  flex-basis: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px 4px 19px;
+}
+
+.suffix-label {
+  flex: none;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.suffix .input {
+  flex: 1;
+  height: 24px;
 }
 
 .empty {

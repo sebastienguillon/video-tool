@@ -38,6 +38,13 @@ export class JobError extends Error {
   }
 }
 
+/** The soundtrack that replaces the audio, and what the result's name says of it. */
+export interface ReplacementTrack {
+  readonly path: string;
+  /** See `AudioTrack.suffix`. */
+  readonly suffix: string;
+}
+
 export interface JobInput {
   readonly tools: MediaTools;
   readonly source: string;
@@ -46,7 +53,7 @@ export interface JobInput {
   readonly recipe: Recipe;
   readonly output: OutputSettings;
   /** The replacement soundtrack, when `recipe.audio` is `replace`. */
-  readonly track: { readonly path: string } | null;
+  readonly track: ReplacementTrack | null;
   readonly signal: AbortSignal;
   readonly onProgress: (progress: Progress) => void;
   /**
@@ -136,7 +143,7 @@ export async function processVideo(input: JobInput): Promise<string> {
     if (frames === 0) {
       throw new JobError('Nothing is left of the video after the cuts.');
     }
-    const labels = outputLabels(recipe);
+    const labels = outputLabels(recipe, input.track?.suffix ?? null);
     return await publishOutput(partial, dir, (copy) =>
       outputName(baseName, labels, container, copy),
     ).catch((error: unknown) => {
