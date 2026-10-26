@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  # Also run as the first stage of the release workflow.
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  checks:
+    name: Workflows, format, lint, types
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Lints these workflows; the image bundles shellcheck for `run:` scripts.
+      - uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # 1.7.12
+        with:
+          args: -color
+      # pnpm from `packageManager`, Node.js from `.nvmrc`, then `pnpm install --frozen-lockfile`.
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        with:
+          cache: true
+          require-lockfile: true
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+
+  test:
+    # Paths, file names and ffmpeg builds differ per OS: test on all three.
+    name: Test and build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    # Installing ffmpeg with Homebrew alone can take several minutes.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        with:
+          cache: true
+          require-lockfile: true
+      # The ffmpeg integration tests encode real clips with the ffmpeg and ffprobe on the PATH.
+      - name: Install ffmpeg (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Install ffmpeg (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+        run: brew install ffmpeg
+      # Chocolatey puts shims on the PATH, which start the real binaries through a path relative to
+      # themselves: a copy or a link of one, as the tests make, cannot run. The folder of the real
+      # binaries goes first on the PATH for the later steps.
+      - name: Install ffmpeg (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          choco install ffmpeg -y --no-progress
+          shopt -s globstar nullglob
+          binaries=(/c/ProgramData/chocolatey/lib/ffmpeg/**/bin/ffprobe.exe)
+          if [ "${#binaries[@]}" -eq 0 ]; then
+            echo "::error::ffprobe.exe not found in the Chocolatey ffmpeg package"
+            exit 1
+          fi
+          cygpath --windows "$(dirname "${binaries[0]}")" >> "$GITHUB_PATH"
+      # Fails here, rather than in the middle of the tests, if a later step would not find them.
+      - name: Check ffmpeg
+        shell: bash
+        run: |
+          command -v ffmpeg
+          command -v ffprobe
+          ffmpeg -version
+          ffprobe -version
+      - run: pnpm test
+        env:
+          # Without ffmpeg the integration tests fail instead of being skipped.
+          VIDEO_TOOL_REQUIRE_FFMPEG: '1'
+      - run: pnpm build
