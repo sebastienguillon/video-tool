@@ -29,6 +29,8 @@ export function formatLength(trim: Trim): string {
 })
 export class LengthField {
   readonly label = input.required<string>();
+  /** The id of a note about the field, read after its own hint; `null` for none. */
+  readonly describedBy = input<string | null>(null);
   readonly value = model.required<Trim>();
   /**
    * Emitted once created, and whenever the text starts or stops being a valid length: typed, or
@@ -38,6 +40,9 @@ export class LengthField {
   readonly validityChange = output<boolean>();
 
   protected readonly id = `length-${nextId++}`;
+  protected readonly description = computed(() =>
+    [`${this.id}-hint`, this.describedBy()].filter((id) => id !== null).join(' '),
+  );
   protected readonly unit = computed(() => this.value().unit);
   /** The text typed, as long as it reads as the value; otherwise the value, formatted. */
   protected readonly text = linkedSignal<Trim, string>({

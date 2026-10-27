@@ -17,6 +17,7 @@ import { errorMessage } from './media/exec';
 import type { ReplacementTrack } from './media/job';
 import { JobError, pathKey, processVideo } from './media/job';
 import type { MediaTools } from './media/media-tools';
+import { appliedRecipe, silencedAudioIssue } from './media/plan';
 import type { MediaProbe } from './media/probe';
 import { probeVideo, UnsupportedMediaError } from './media/probe';
 import type { Progress } from './media/runner';
@@ -207,7 +208,9 @@ export class Queue {
         continue;
       }
       changed = true;
-      const problem = videoIssue(recipe, entry.probe.info);
+      const problem =
+        videoIssue(recipe, entry.probe.info) ??
+        silencedAudioIssue(appliedRecipe(recipe, entry.probe), entry.probe);
       if (problem === null) {
         entry.job = job;
         entry.item = { ...entry.item, state: { kind: 'queued' } };

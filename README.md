@@ -66,17 +66,24 @@ way, the result lasts as long as the video. The soundtrack is encoded in AAC at 
 **Silence**: mute the audio, kept or new, for a length at the start of the result, at its end, or
 both, each in seconds or in frames (counted as they show, as for trims). The video plays on.
 
-- Lengths count on the result, once trimmed: from its first frame (for a fast cut, the keyframe it
-  starts at) and back from the end of its last one. Any audio before the first frame, or after the
-  last, is silent too.
+- Lengths count on the result, once trimmed: from the first frame it shows and back from the end
+  of its last one. A fast cut shows the keyframe it starts at first; a copy of a capture that
+  starts in the middle of a group of pictures (DVB or IPTV recordings), its first keyframe, as the
+  frames before it do not decode. Any audio before the first frame, or after the last, is silent
+  too. Without an end trim, the end is where the container says the video ends, and never before
+  its last frame when the frames are read (for a length in frames).
 - The cut to silence is hard: the lengths silenced are silent throughout. The sound next to them
   fades in or out over 5 ms, so that it does not click.
 - Silencing encodes the audio again (AAC, or Opus in a WebM, at the rates above), never the video:
   on its own, it takes about as long as a copy. Audio tracks that ffmpeg cannot decode cannot be
-  silenced, and are left out (see [Output files](#output-files)).
-- Silences that would leave no sound are refused: remove the audio instead. A video without audio
-  has nothing to silence: it is refused, unless it is trimmed too. Silences do not apply when the
-  audio is removed.
+  silenced, and are left out (see [Output files](#output-files)); a video whose audio is all of
+  that kind fails as soon as Process is pressed.
+- Silences that would leave no sound are refused: remove the audio instead. The video list says so
+  before the run for lengths in seconds; for lengths in frames, and for fast cuts, whose result
+  starts at a keyframe, the video fails when its turn comes, once its frames are read.
+- When its audio is kept, a video without audio has nothing to silence: it is refused, unless it is
+  trimmed too (the silences are then left out). A new soundtrack on it is silenced. Silences do
+  not apply when the audio is removed.
 
 **Trim**: remove a length at the start, at the end, or both, each in seconds or in frames.
 

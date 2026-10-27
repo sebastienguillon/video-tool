@@ -305,6 +305,32 @@ describe('Queue', () => {
     expect(processVideo).not.toHaveBeenCalled();
   });
 
+  it('fails at once the videos whose audio cannot be silenced, as none of it decodes', async () => {
+    // Like the spatial audio of an iPhone video, alone.
+    vi.mocked(probeVideo).mockImplementation((_, file) =>
+      Promise.resolve({
+        ...fakeProbe(file),
+        audio: [{ index: 1, codec: null, channels: 4, layout: null, startSec: 0 }],
+      }),
+    );
+    const { queue, until } = createQueue(FAKE_TOOLS);
+    queue.add(files);
+    await until((items) => items.every((item) => item.state.kind === 'ready'));
+    const silence: Recipe = {
+      ...DEFAULT_RECIPE,
+      audio: 'keep',
+      silenceEnd: { amount: 1, unit: 'seconds' },
+    };
+    expect(queue.start(silence, BESIDE, null)).toBe(0);
+    expect(queue.list().map((item) => item.state)).toEqual(
+      files.map(() => ({
+        kind: 'failed',
+        message: 'Its audio cannot be decoded, so it cannot be silenced.',
+      })),
+    );
+    expect(processVideo).not.toHaveBeenCalled();
+  });
+
   it('reports failures with their message', async () => {
     const runs = controlRuns();
     const { queue, until } = await readyQueue();

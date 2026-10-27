@@ -200,6 +200,9 @@ export async function packetSpan(file: string, stream: 'v' | 'a'): Promise<Span>
   };
 }
 
+/** A time as ffmpeg prints it: `1.5`, `-0.021`, or `3.125e-05` up to ffmpeg 6.1. */
+const TIME = String.raw`-?\d+(?:\.\d+)?(?:e[-+]?\d+)?`;
+
 /**
  * When the first audio stream starts to be heard, on the file's time line: after the silence that
  * encoders put first (AAC primes its decoder with 1024 samples), for a sound that starts at once.
@@ -220,7 +223,9 @@ export async function audibleStart(file: string): Promise<number> {
       .map((frame) => Number(frame.best_effort_timestamp_time))
       .filter((time) => Number.isFinite(time)),
   );
-  const silence = /silence_start: (-?[\d.]+)[\s\S]*?silence_end: (-?[\d.]+)/.exec(stderr);
+  const silence = new RegExp(`silence_start: (${TIME})[\\s\\S]*?silence_end: (${TIME})`, 'i').exec(
+    stderr,
+  );
   // Silent from the start: heard where that silence ends.
   return silence !== null && Math.abs(Number(silence[1]) - start) < 0.002
     ? Number(silence[2])
@@ -282,12 +287,12 @@ export async function videoPacketHashes(file: string): Promise<string[]> {
 }
 
 /**
- * From the first frame of the first video or audio stream, as decoded, to the end of its last one,
- * on the file's time line: what is shown or heard, decoders' skipped samples left out.
+ * From the first frame of a video or audio stream (the first by default), as decoded, to the end of
+ * its last one, on the file's time line: what is shown or heard, decoders' skipped samples left out.
  */
-export async function decodedSpan(file: string, stream: 'v' | 'a'): Promise<Span> {
+export async function decodedSpan(file: string, stream: 'v' | 'a', index = 0): Promise<Span> {
   const json = (await ffprobeJson([
-    ...['-select_streams', `${stream}:0`],
+    ...['-select_streams', `${stream}:${String(index)}`],
     // `pkt_duration_time` before ffmpeg 5.0.
     ...['-show_entries', 'frame=best_effort_timestamp_time,duration_time,pkt_duration_time', file],
   ])) as {
@@ -314,17 +319,17 @@ export async function decodedSpan(file: string, stream: 'v' | 'a'): Promise<Span
 }
 
 /**
- * Where the first audio stream is silent, on the file's time line: from where its sound stops, or
- * where the stream starts, to where it is heard again, or where the stream ends. For a sound that
- * never stops by itself, like a tone.
+ * Where an audio stream (the first by default) is silent, on the file's time line: from where its
+ * sound stops, or where the stream starts, to where it is heard again, or where the stream ends.
+ * For a sound that never stops by itself, like a tone.
  */
-export async function silentSpans(file: string): Promise<Span[]> {
+export async function silentSpans(file: string, index = 0): Promise<Span[]> {
   const stderr = await ffmpeg([
-    ...['-copyts', '-i', file, '-map', '0:a:0'],
+    ...['-copyts', '-i', file, '-map', `0:a:${String(index)}`],
     ...['-af', 'silencedetect=noise=-50dB:duration=0.001', '-f', 'null', '-'],
   ]);
   const spans: Span[] = [];
-  for (const match of stderr.matchAll(/silence_(start|end): (-?[\d.]+)/g)) {
+  for (const match of stderr.matchAll(new RegExp(`silence_(start|end): (${TIME})`, 'gi'))) {
     const time = Number(match[2]);
     if (match[1] === 'start') {
       spans.push({ startSec: time, endSec: Number.POSITIVE_INFINITY });

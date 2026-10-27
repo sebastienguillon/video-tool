@@ -9,7 +9,7 @@
     [id]="id"
     [attr.inputmode]="unit() === 'frames' ? 'numeric' : null"
     [attr.aria-invalid]="invalid()"
-    [attr.aria-describedby]="`${id}-hint`"
+    [attr.aria-describedby]="description()"
     [value]="text()"
     (input)="onInput($event)"
     (blur)="reformat()"

@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   findKeyframe,
   firstFrame,
+  firstShownTime,
   frameRateOf,
   lastKeyframe,
   lastPacketEnd,
@@ -310,6 +311,23 @@ describe('parseAudioProbe', () => {
     expect(() => parseAudioProbe({ streams: [{ codec_type: 'audio' }], format: {} })).toThrow(
       'Its duration is unknown: it cannot be used.',
     );
+  });
+});
+
+describe('firstShownTime', () => {
+  it('finds the first frame shown at or after a time, among frames out of order', () => {
+    // pts_time,flags in decoding order: a keyframe, then B-frames shown before the P-frame.
+    const csv = ['1.000,K__', '1.100,___', '1.033,___', '1.067,___', '1.200,___'].join('\n');
+    expect(firstShownTime(csv, 1.05)).toEqual({ timeSec: 1.067, at: 1, packets: 5 });
+    expect(firstShownTime(csv, 1.3)).toEqual({ timeSec: null, at: null, packets: 5 });
+  });
+
+  it('starts a copy from its first keyframe, and skips the frames an edit list hides', () => {
+    // A capture that starts in the middle of a group of pictures; an open one at its keyframe.
+    const capture = ['1.421,___', '1.488,___', '1.621,K__', '1.588,___', '1.654,___'].join('\n');
+    expect(firstShownTime(capture, null)).toEqual({ timeSec: 1.621, at: 2, packets: 5 });
+    const edited = ['0.500,KD_', '0.533,_D_', '0.667,___', '0.600,_D_', '0.700,___'].join('\n');
+    expect(firstShownTime(edited, null).timeSec).toBe(0.667);
   });
 });
 

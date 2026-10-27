@@ -145,6 +145,21 @@ describe.skipIf(ffmpegMissing)('processVideo', () => {
         ...['-i', toneSource(3), '-c:v', 'libvpx', '-deadline', 'realtime', '-b:v', '1M'],
         ...['-c:a', 'libopus', '-f', 'webm', '-live', '1', file('recorded.webm')],
       ]),
+      // The same, with B-frames: the MP4 muxer then gives the stream the duration of its decoding
+      // times, 2.6 s, though its last frames show at 3 and 3.5 s.
+      ffmpeg([
+        ...['-loglevel', 'error', '-f', 'lavfi', '-i'],
+        `color=c=black:s=320x240:r=30:d=4,select='lt(t\\,2)+not(mod(n\\,15))',format=yuv420p,geq=lum='16+2*N':cb=128:cr=128`,
+        ...['-f', 'lavfi', '-i', toneSource(4), ...fpsMode('vfr'), '-c:v', 'libx264'],
+        ...['-preset', 'veryfast', '-bf', '2', '-g', '15', '-c:a', 'aac', file('vfrb.mp4')],
+      ]),
+      // Two audio tracks, both kept.
+      ffmpeg([
+        ...['-loglevel', 'error', '-f', 'lavfi', '-i', rampSource(3), '-f', 'lavfi'],
+        ...['-i', toneSource(3), '-f', 'lavfi', '-i', toneSource(3, 880)],
+        ...['-map', '0', '-map', '1', '-map', '2', '-g', '15', '-c:v', 'libx264'],
+        ...['-preset', 'veryfast', '-c:a', 'aac', file('two.mkv')],
+      ]),
       // Two AAC tracks, the second to be made undecodable.
       ...['spatial.mov', 'spatial.mp4'].map((name) =>
         ffmpeg([
@@ -164,6 +179,12 @@ describe.skipIf(ffmpegMissing)('processVideo', () => {
       ffmpeg([
         ...['-loglevel', 'error', '-ss', String(20 / 30), '-i', file('ramp.mp4')],
         ...['-c', 'copy', file('edited.mp4')],
+      ]),
+      // A capture that starts in the middle of a group of pictures, as DVB and IPTV recordings do:
+      // its first 6 frames (0.2 s) do not decode, and its first keyframe is frame 15 of the ramp.
+      ffmpeg([
+        ...['-loglevel', 'error', '-i', file('transport.ts'), '-ss', '0.3', '-map', '0'],
+        ...['-c', 'copy', '-copyinkf', file('midgop.ts')],
       ]),
       // Like the spatial audio (APAC) of recent iPhones.
       disguiseAudioTrack(file('spatial.mov'), 2),
@@ -622,22 +643,34 @@ describe.skipIf(ffmpegMissing)('processVideo', () => {
 
   describe('silencing', () => {
     /**
-     * How far from where it is asked the sound may stop or start: lossy encoders spread an onset by
-     * a millisecond or two, and AVI rounds the video's timestamps to its frames.
+     * How far past where it is asked the sound may start, or before it stop: the fades take 5 ms of
+     * the sound, and AVI rounds the video's timestamps to its frames.
      */
     const TOLERANCE = 0.005;
+    /**
+     * How far into the lengths silenced sound may be heard: lossy encoders spread an onset, by
+     * 2.6 ms at most as measured. Fades within the silences would take 5 ms of them.
+     */
+    const LEAK = 0.004;
 
     /**
-     * Checks that the first audio stream of `output` is silent from its start until `untilSec` after
-     * the first frame, heard from there until `fromSec`, and silent from there to its end; `null`
-     * when not silenced there. Times count from the first frame as decoded.
+     * Checks that an audio stream of `output` (the first by default) is silent from its start until
+     * `untilSec` after the first frame, heard from there until `fromSec`, and silent from there to
+     * its end; `null` when not silenced there. Times count from the first frame as decoded.
      */
-    async function expectSilences(output: string, untilSec: number | null, fromSec: number | null) {
+    async function expectSilences(
+      output: string,
+      untilSec: number | null,
+      fromSec: number | null,
+      stream = 0,
+    ) {
       const first = (await decodedSpan(output, 'v')).startSec;
-      const audio = await decodedSpan(output, 'a');
-      const spans = await silentSpans(output);
+      const audio = await decodedSpan(output, 'a', stream);
+      const spans = await silentSpans(output, stream);
       const heardFrom = Math.max(first + (untilSec ?? 0), audio.startSec) + TOLERANCE;
-      const heardUntil = (fromSec === null ? audio.endSec : first + fromSec) - TOLERANCE;
+      // Without an end silence, up to its end, but for the encoder's padding of the last frame.
+      const heardUntil =
+        fromSec === null ? audio.endSec - 1024 / 48_000 : first + fromSec - TOLERANCE;
       // Heard throughout, in between.
       expect(
         spans.filter((span) => span.endSec > heardFrom && span.startSec < heardUntil),
@@ -647,11 +680,11 @@ describe.skipIf(ffmpegMissing)('processVideo', () => {
         // From the start of the audio, which may come before the first frame or a little after.
         const start = spans[0];
         expect(start?.startSec).toBeLessThanOrEqual(audio.startSec + 0.001);
-        expect(start?.endSec).toBeGreaterThanOrEqual(first + untilSec - TOLERANCE);
+        expect(start?.endSec).toBeGreaterThanOrEqual(first + untilSec - LEAK);
       }
       if (fromSec !== null) {
         const end = spans.at(-1);
-        expect(end?.startSec).toBeLessThanOrEqual(first + fromSec + TOLERANCE);
+        expect(end?.startSec).toBeLessThanOrEqual(first + fromSec + LEAK);
         expect(end?.endSec).toBeGreaterThanOrEqual(audio.endSec - 0.001);
       }
     }
@@ -760,7 +793,7 @@ describe.skipIf(ffmpegMissing)('processVideo', () => {
 
     it('silences frames at the times they show on a variable frame rate', async () => {
       // 30 fps for 2 s, then 2 fps: the last 2 frames show from 3 s, the 2 after 2 s from 2.5 s.
-      // On the average rate's grid (16 fps), 2 frames would last 0.125 s.
+      // On the average rate's grid (18.1 fps), 2 frames would last 0.11 s.
       const output = await run(file('vfr.mp4'), {
         audio: 'keep',
         silenceStart: frames(10),
@@ -777,6 +810,113 @@ describe.skipIf(ffmpegMissing)('processVideo', () => {
       });
       await expectFrames(trimmed, 32, 63);
       await expectSilences(trimmed, 3 - 32 / 30, null);
+    });
+
+    describe('with nothing trimmed, from the first frame of files that do not start at 0', () => {
+      const names = [
+        'delayed.mp4',
+        'early.mkv',
+        'transport.ts',
+        'program.mpg',
+        'bframes.avi',
+        'ramp.webm',
+      ];
+
+      it.each(names)('silences the audio of %s', async (name) => {
+        const output = await run(file(name), {
+          audio: 'keep',
+          silenceStart: seconds(0.5),
+          silenceEnd: seconds(0.75),
+        });
+        const shown = (await countDecodedFrames(output)) / 30;
+        await expectSilences(output, 0.5, shown - 0.75);
+      });
+
+      it.each(names)('silences a new soundtrack of %s', async (name) => {
+        const output = await run(
+          file(name),
+          {
+            audio: 'replace',
+            trackId: 'tone',
+            silenceStart: seconds(0.5),
+            silenceEnd: seconds(0.75),
+          },
+          { track: file('tone5.mp3') },
+        );
+        const shown = (await countDecodedFrames(output)) / 30;
+        await expectSilences(output, 0.5, shown - 0.75);
+      });
+    });
+
+    it('silences every audio track', async () => {
+      const output = await run(file('two.mkv'), {
+        audio: 'keep',
+        silenceStart: seconds(1),
+        silenceEnd: seconds(1),
+      });
+      await expectSilences(output, 1, 2);
+      await expectSilences(output, 1, 2, 1);
+    });
+
+    describe('in a capture that starts with frames that do not decode', () => {
+      it('counts from its first keyframe when copied', async () => {
+        const output = await run(file('midgop.ts'), { audio: 'keep', silenceStart: seconds(0.5) });
+        await expectSilences(output, 0.5, null);
+      });
+
+      it('counts from its first frame, on the time line ffmpeg starts at the stream start', async () => {
+        // Exact cuts count frames from the first one decoded, frame 15 of the ramp.
+        const start = await run(file('midgop.ts'), {
+          audio: 'keep',
+          precision: 'exact',
+          trimStart: frames(10),
+          silenceStart: seconds(0.5),
+        });
+        await expectFrames(start, 25, 89);
+        await expectSilences(start, 0.5, null);
+        const end = await run(
+          file('midgop.ts'),
+          {
+            audio: 'replace',
+            trackId: 'tone',
+            precision: 'exact',
+            trimEnd: frames(5),
+            silenceStart: seconds(0.3),
+          },
+          { track: file('tone5.mp3') },
+        );
+        await expectFrames(end, 15, 84);
+        await expectSilences(end, 0.3, null);
+      });
+    });
+
+    describe('when the container ends the video before its last frames show', () => {
+      it('silences the last frames as they show', async () => {
+        const output = await run(file('vfrb.mp4'), { audio: 'keep', silenceEnd: frames(2) });
+        // Frames 62 and 63, from 3 s.
+        await expectSilences(output, null, 3);
+      });
+
+      it('leaves the frames after a start silence their sound', async () => {
+        const output = await run(file('vfrb.mp4'), { audio: 'keep', silenceStart: frames(62) });
+        await expectSilences(output, 3, null);
+        await expect(
+          run(file('vfrb.mp4'), { audio: 'keep', silenceStart: frames(64) }),
+        ).rejects.toThrow('The silences cover all of it (0:04 long): remove the audio instead.');
+      });
+    });
+
+    it('counts from the first frame kept when a cut in seconds falls between frames far apart', async () => {
+      // The cut rounds 2.1 s up to 2.15 s, on the average rate's grid: frame 61, at 2.5 s, is the
+      // first kept.
+      const output = await run(file('vfr.mp4'), {
+        audio: 'keep',
+        precision: 'exact',
+        trimStart: seconds(2.1),
+        silenceStart: seconds(0.25),
+      });
+      await expectFrames(output, 61, 63);
+      await expectSilences(output, 0.25, null);
     });
 
     it('leaves out the audio that ffmpeg cannot decode, which cannot be silenced', async () => {

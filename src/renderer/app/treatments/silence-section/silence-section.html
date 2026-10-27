@@ -6,21 +6,23 @@
     <div class="fields">
       <app-length-field
         label="Silence the start"
+        describedBy="silence-note"
         [value]="recipe().silenceStart"
         (valueChange)="setSilence('silenceStart', $event)"
         (validityChange)="setValidity('silenceStart', $event)"
       />
       <app-length-field
         label="Silence the end"
+        describedBy="silence-note"
         [value]="recipe().silenceEnd"
         (valueChange)="setSilence('silenceEnd', $event)"
         (validityChange)="setValidity('silenceEnd', $event)"
       />
     </div>
-    <p class="hint">
+    <p id="silence-note" class="hint">
       Counted on the result, after the trims.
       @if (silencing()) {
-        Re-encodes the audio, never the video.
+        Silencing re-encodes the audio, not the video.
       }
     </p>
   }

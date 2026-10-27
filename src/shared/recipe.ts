@@ -135,19 +135,16 @@ export function recipeIssue(recipe: Recipe, track: AudioTrack | null): string | 
   return null;
 }
 
-/** Why the recipe cannot apply to this video; `null` when it can. */
+/**
+ * Why the recipe cannot apply to this video; `null` when it can. Silences that would leave no sound
+ * are refused here only when that is sure from what the list knows: lengths all in seconds, and not
+ * a fast cut, which starts at a keyframe before its start trim. The plan refuses the others, from
+ * the frames as scanned and the keyframe found.
+ */
 export function videoIssue(recipe: Recipe, info: VideoInfo): string | null {
   const inFrames = (length: Trim) => length.unit === 'frames' && isTrimSet(length);
   if (info.frameRate === null && [recipe.trimStart, recipe.trimEnd].some(inFrames)) {
     return 'Its frame rate is unknown: trim it in seconds.';
-  }
-  const silencing = silences(recipe);
-  if (
-    info.frameRate === null &&
-    silencing &&
-    [recipe.silenceStart, recipe.silenceEnd].some(inFrames)
-  ) {
-    return 'Its frame rate is unknown: silence it in seconds.';
   }
   const remaining = outputDuration(recipe, info);
   // Half a frame of tolerance for frame counts converted to seconds.
@@ -155,15 +152,26 @@ export function videoIssue(recipe: Recipe, info: VideoInfo): string | null {
   if (remaining !== null && remaining < minimum) {
     return `The trims remove all of it (${formatDuration(info.durationSec)} long).`;
   }
-  if (!silencing) {
+  if (!silences(recipe)) {
     return null;
   }
   if (recipe.audio === 'keep' && info.audioCodec === null) {
     // Silences of a video without audio are left out: it may still be trimmed.
     return trims(recipe) ? null : 'It has no audio to silence.';
   }
+  const lengths = [recipe.trimStart, recipe.trimEnd, recipe.silenceStart, recipe.silenceEnd];
+  if (info.frameRate === null && [recipe.silenceStart, recipe.silenceEnd].some(inFrames)) {
+    return 'Its frame rate is unknown: silence it in seconds.';
+  }
+  const startMoves = recipe.precision === 'fast' && isTrimSet(recipe.trimStart);
   const silenced = silencedDuration(recipe, info);
-  if (remaining !== null && silenced !== null && remaining - silenced < minimum) {
+  if (
+    !lengths.some(inFrames) &&
+    !startMoves &&
+    remaining !== null &&
+    silenced !== null &&
+    remaining - silenced < minimum
+  ) {
     return coveredBySilences(remaining, trims(recipe));
   }
   return null;

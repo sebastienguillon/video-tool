@@ -18,6 +18,8 @@ import {
 import type { AudioTrackInput, FrameTimes } from './plan';
 import {
   appliedRecipe,
+  cutMargin,
+  firstFrameLookup,
   framesToScan,
   generatesTimes,
   keyframeLookup,
@@ -28,6 +30,7 @@ import type { FrameScan, Keyframe, MediaProbe } from './probe';
 import {
   findKeyframe,
   firstFrame,
+  firstShownFrame,
   probeAudioTrack,
   scanFrames,
   UnsupportedMediaError,
@@ -93,13 +96,16 @@ export async function processVideo(input: JobInput): Promise<string> {
   // Packets are read as the copy will read them: with the presentation times it works out.
   const genpts = generatesTimes(recipe, input.probe);
   const probe = await onCutTimeline(input, recipe, genpts);
-  const scan = await framesOf(input, recipe, probe, genpts);
+  const scan = framesShown(await framesOf(input, recipe, probe, genpts), recipe, probe);
   const totalFrames = scan?.complete === true ? scan.count : probe.video.frameCount;
   const times = scan?.times ?? null;
   const frameTimes: FrameTimes | null =
     times === null ? null : { times, complete: scan?.complete === true };
   const lookup = keyframeLookup(recipe, probe, frameTimes);
   const keyframe = lookup === null ? null : await keyframeBefore(input, lookup, genpts);
+  const shownFrom = firstFrameLookup(recipe, probe, frameTimes);
+  const firstFrameSec =
+    shownFrom === undefined ? null : await firstShown(input, probe, shownFrom, genpts);
   const track = recipe.audio === 'replace' ? await replacement(input) : null;
   if (signal.aborted) {
     throw new CanceledError();
@@ -122,6 +128,7 @@ export async function processVideo(input: JobInput): Promise<string> {
     totalFrames,
     frameTimes,
     keyframe,
+    firstFrameSec,
   });
   if (!planned.ok) {
     throw new JobError(planned.message);
@@ -256,6 +263,20 @@ async function framesOf(
 }
 
 /**
+ * The frames scanned that show: for an exact cut, from the first one decoded on. A capture that
+ * starts in the middle of a group of pictures stores frames before it that never decode.
+ */
+function framesShown(scan: FrameScan | null, recipe: Recipe, probe: MediaProbe): FrameScan | null {
+  const scanned = scan?.times ?? null;
+  if (scan === null || scanned === null || !reencodesVideo(recipe)) {
+    return scan;
+  }
+  const from = probe.video.startSec - cutMargin(probe.video.frameRate);
+  const times = scanned.filter((time) => time >= from);
+  return { ...scan, count: scan.count - (scanned.length - times.length), times };
+}
+
+/**
  * Exact cuts count frames from the first one as decoded, and go by the field order the decoded
  * frames have (see `firstFrame`).
  */
@@ -277,6 +298,7 @@ async function withFirstFrame(input: JobInput): Promise<MediaProbe> {
     video: {
       ...probe.video,
       startSec: first.startSec,
+      streamStartSec: probe.video.startSec,
       // Interlaced as the stream says; frames that are not marked so do not tell the order.
       fieldOrder: fieldOrder === null ? null : (first.fieldOrder ?? fieldOrder),
     },
@@ -324,6 +346,26 @@ async function keyframeBefore(
     (error: unknown) => {
       rethrowIfCanceled(signal);
       log.warn(`Cannot find the keyframes of ${source}:`, errorMessage(error));
+      return null;
+    },
+  );
+}
+
+/**
+ * When the first frame of the result shows (see `firstFrameLookup`); `null` when it cannot be read:
+ * the cut then tells where the silences count from.
+ */
+async function firstShown(
+  input: JobInput,
+  probe: MediaProbe,
+  atSec: number | null,
+  genpts: boolean,
+): Promise<number | null> {
+  const { tools, source, signal } = input;
+  return firstShownFrame(tools, source, probe.video.index, atSec, { genpts, signal }).catch(
+    (error: unknown) => {
+      rethrowIfCanceled(signal);
+      log.warn(`Cannot find the first frame shown of ${source}:`, errorMessage(error));
       return null;
     },
   );

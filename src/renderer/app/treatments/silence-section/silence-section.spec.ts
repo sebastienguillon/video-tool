@@ -43,6 +43,10 @@ describe('SilenceSection', () => {
       'Silence the end',
     ]);
     expect(hint()).toBe('Counted on the result, after the trims.');
+    // Read with each field, after its own hint.
+    for (const field of inputs()) {
+      expect(field.getAttribute('aria-describedby')).toBe(`${field.id}-hint silence-note`);
+    }
   });
 
   it('sets the silences of the recipe, and says what they cost', async () => {
@@ -50,7 +54,7 @@ describe('SilenceSection', () => {
     await type(start!, '1.5');
     expect(settings.recipe().silenceStart).toEqual({ amount: 1.5, unit: 'seconds' });
     expect(hint()).toBe(
-      'Counted on the result, after the trims. Re-encodes the audio, never the video.',
+      'Counted on the result, after the trims. Silencing re-encodes the audio, not the video.',
     );
 
     const unit = host.querySelectorAll('select')[1]!;

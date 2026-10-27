@@ -40,6 +40,12 @@ export interface VideoStream {
   readonly fullRange: boolean;
   /** Timestamp of its first frame; differs from the format's when audio starts earlier or later. */
   readonly startSec: number;
+  /**
+   * The stream's start as its container gives it, which ffmpeg's time line goes by, when
+   * `startSec` is the first frame as decoded (see `firstFrame`): later in a recording that starts
+   * with frames that do not decode.
+   */
+  readonly streamStartSec?: number;
   readonly durationSec: number;
   readonly frameRate: number | null;
   /** As the container records it, when it agrees with the duration (see `frameCountOf`). */
@@ -385,6 +391,76 @@ export async function findKeyframe(
     }
   }
   return null;
+}
+
+/**
+ * When the first frame of a result shows, read from the packets without decoding: for a cut that
+ * decodes from `atSec` (an absolute timestamp), the first frame at or after it, which comes later
+ * than the frame rate says where frames are far apart; for a stream copied from its start
+ * (`atSec` `null`), the first frame that can be decoded. A recording that starts in the middle of
+ * a group of pictures (DVB and IPTV captures) begins with frames that never show: those before its
+ * first keyframe, or shown before it. `null` when none is found.
+ */
+export async function firstShownFrame(
+  tools: MediaTools,
+  file: string,
+  streamIndex: number,
+  atSec: number | null,
+  options: PacketOptions = {},
+): Promise<number | null> {
+  const { signal } = options;
+  const from = atSec === null ? '' : atSec.toFixed(6);
+  for (let packets = 4 * REORDER_FRAMES; ; packets *= 4) {
+    const { stdout } = await execTool(
+      tools.ffprobe,
+      [
+        ...['-v', 'error', ...packetArgs(options), '-select_streams', String(streamIndex)],
+        ...['-read_intervals', `${from}%+#${String(packets)}`],
+        ...['-show_entries', 'packet=pts_time,flags', '-print_format', 'csv=p=0', file],
+      ],
+      { timeoutMs: COUNT_TIMEOUT_MS, maxBuffer: LISTING_MAX_BYTES, ...(signal ? { signal } : {}) },
+    );
+    const shown = firstShownTime(stdout.toString('utf8'), atSec);
+    // Frames stored after it may show before it: read on until as many as B-frames reorder.
+    if (
+      shown.packets < packets ||
+      (shown.at !== null && shown.packets - shown.at > REORDER_FRAMES)
+    ) {
+      return shown.timeSec;
+    }
+  }
+}
+
+/**
+ * The first frame shown in a CSV listing of `pts_time,flags` packet lines (see `firstShownFrame`):
+ * its time, the index of the first packet that qualified, and the packets read. Frames an edit list
+ * hides (`D`) never show.
+ */
+export function firstShownTime(
+  csv: string,
+  atSec: number | null,
+): { readonly timeSec: number | null; readonly at: number | null; readonly packets: number } {
+  let packets = 0;
+  let from = atSec;
+  let timeSec: number | null = null;
+  let at: number | null = null;
+  for (const line of csv.split(/\r?\n/)) {
+    const [ptsText, flags] = line.trim().split(',');
+    if (flags === undefined) {
+      continue;
+    }
+    const pts = toNumber(ptsText);
+    // From the start, frames show from the first keyframe on.
+    if (from === null && flags.startsWith('K') && pts !== null) {
+      from = pts;
+    }
+    if (from !== null && pts !== null && pts >= from && !flags.includes('D')) {
+      at ??= packets;
+      timeSec = timeSec === null ? pts : Math.min(timeSec, pts);
+    }
+    packets++;
+  }
+  return { timeSec, at, packets };
 }
 
 /**

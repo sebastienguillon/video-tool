@@ -211,6 +211,8 @@ const WEBM_AUDIO_ENCODERS: readonly AudioEncoder[] = [
   { name: 'libvorbis', bitRate: (channels) => (channels <= 2 ? '160k' : '320k'), layouts: null },
 ];
 
+const NO_LENGTH: Trim = { amount: 0, unit: 'seconds' };
+
 /** Fractions of a frame smaller than this are float noise, not part of a frame. */
 const FRAME_EPSILON = 1e-3;
 
@@ -496,7 +498,7 @@ function timingOf(range: KeptRange, probe: MediaProbe, options: TimingOptions): 
     // The output seek drops packets decoded before it: start just before the keyframe's.
     const copyFrom = (keyframe?.dtsSec ?? range.fromSec) - margin;
     if (copyFrom <= options.originSec) {
-      return unseeked;
+      return { ...unseeked, firstFrameSec: start };
     }
     return {
       seekSec: null,
@@ -546,73 +548,116 @@ interface Silences {
 }
 
 /**
- * When the frame `count` frames after the one that shows at `atSec` shows, or before it for a
- * negative count: at its time as scanned, else on the frame rate's grid. Without a frame rate,
- * lengths in frames are refused beforehand.
+ * Where `recipe` mutes the audio of the result timed by `timing`, or why it cannot. Lengths count
+ * from the first frame shown: `firstShownSec` when looked up (see `firstFrameLookup`), else the
+ * first frame scanned at the start of the cut, else where the cut starts. They count back from the
+ * end of the last frame: never before the last frame scanned, as a container may say the stream
+ * ends before its last frames show (variable frame rates with B-frames in MP4). Lengths in frames
+ * go by the frames scanned (see `framesToScan`), else by the frame rate.
  */
-function framesAway(
-  atSec: number,
-  count: number,
-  frameRate: number,
-  frameTimes: FrameTimes | null,
-): number {
-  const times = frameTimes?.times ?? [];
-  // The index of the frame at `atSec`; at the end of the result, past its last frame, the index of
-  // the first one removed, or the number of frames.
-  const index = times.filter((time) => time < atSec - cutMargin(frameRate)).length;
-  return times[index + count] ?? atSec + count / frameRate;
-}
-
-/** The time `length` takes from `atSec` on, or back from it for `direction` -1. */
-function timeAfter(
-  atSec: number,
-  length: Trim,
-  direction: 1 | -1,
-  video: VideoStream,
-  frameTimes: FrameTimes | null,
-): number {
-  return length.unit === 'seconds' || video.frameRate === null
-    ? atSec + direction * length.amount
-    : framesAway(atSec, direction * length.amount, video.frameRate, frameTimes);
-}
-
-/** Where `recipe` mutes the audio of the result timed by `timing`, or why it cannot. */
 function silencesOf(
   recipe: Recipe,
   timing: Timing,
+  untrimmedEnd: boolean,
   video: VideoStream,
   frameTimes: FrameTimes | null,
+  firstShownSec: number | null,
 ):
   | { readonly ok: true; readonly silences: Silences }
   | { readonly ok: false; readonly message: string } {
-  const { firstFrameSec, endSec, timelineSec } = timing;
-  if (
-    video.frameRate === null &&
-    [recipe.silenceStart, recipe.silenceEnd].some(
-      (length) => length.unit === 'frames' && isTrimSet(length),
-    )
-  ) {
+  const { frameRate } = video;
+  const inFrames = (length: Trim) => length.unit === 'frames' && isTrimSet(length);
+  if (frameRate === null && [recipe.silenceStart, recipe.silenceEnd].some(inFrames)) {
     return { ok: false, message: 'Its frame rate is unknown: silence it in seconds.' };
   }
-  const until = isTrimSet(recipe.silenceStart)
-    ? timeAfter(firstFrameSec, recipe.silenceStart, 1, video, frameTimes)
-    : null;
-  const from = isTrimSet(recipe.silenceEnd)
-    ? timeAfter(endSec, recipe.silenceEnd, -1, video, frameTimes)
-    : null;
+  const times = frameTimes?.times ?? null;
+  const complete = frameTimes?.complete === true && times !== null && times.length > 0;
+  const margin = cutMargin(frameRate);
+  /** Frames scanned before a time: the index of the frame at it. */
+  const before = (sec: number) => times?.filter((time) => time < sec - margin).length ?? 0;
+  const first = firstShownSec ?? times?.[before(timing.firstFrameSec)] ?? timing.firstFrameSec;
+  // The last frame scanned shows for as long as the one before it did, at least: the result ends
+  // after it, though only the first frames were scanned.
+  const last = times?.at(-1) ?? null;
+  const lastShows = Math.max(
+    last === null ? 0 : last - (times?.at(-2) ?? last),
+    frameRate === null ? 0 : 1 / frameRate,
+  );
+  const end =
+    untrimmedEnd && last !== null ? Math.max(timing.endSec, last + lastShows) : timing.endSec;
+  /**
+   * When the frame `index` shows, as scanned; before the first one, at the start of the result,
+   * and past the last one of a complete scan, at its end. Elsewhere `gridSec`, on the frame rate's.
+   */
+  const frameAt = (index: number, gridSec: number) => {
+    if (times === null) {
+      return gridSec;
+    }
+    if (index < 0) {
+      return first;
+    }
+    return times[index] ?? (complete ? end : gridSec);
+  };
+  /** Where `length` takes from the frame `index`, at `atSec`, on, or back from it for -1. */
+  const reach = (length: Trim, atSec: number, index: number, direction: 1 | -1) => {
+    if (!isTrimSet(length)) {
+      return null;
+    }
+    const lengthSec = length.amount / (inFrames(length) ? (frameRate ?? 1) : 1);
+    const gridSec = atSec + direction * lengthSec;
+    return inFrames(length) ? frameAt(index + direction * length.amount, gridSec) : gridSec;
+  };
+  const until = reach(recipe.silenceStart, first, before(first), 1);
+  const from = reach(
+    recipe.silenceEnd,
+    end,
+    untrimmedEnd && complete ? times.length : before(end),
+    -1,
+  );
   // Half a frame of sound at least, as for what the trims leave.
-  const audible =
-    Math.min(endSec, from ?? endSec) - Math.max(firstFrameSec, until ?? firstFrameSec);
-  if (audible < (video.frameRate === null ? 0.001 : 0.5 / video.frameRate)) {
-    return { ok: false, message: coveredBySilences(endSec - firstFrameSec, trims(recipe)) };
+  const audible = Math.min(end, from ?? end) - Math.max(first, until ?? first);
+  if (audible < (frameRate === null ? 0.001 : 0.5 / frameRate)) {
+    return { ok: false, message: coveredBySilences(end - first, trims(recipe)) };
   }
   return {
     ok: true,
     silences: {
-      untilSec: until === null ? null : until - timelineSec,
-      fromSec: from === null ? null : from - timelineSec,
+      untilSec: until === null ? null : until - timing.timelineSec,
+      fromSec: from === null ? null : from - timing.timelineSec,
     },
   };
+}
+
+/**
+ * Where to look for the first frame of the result, which start silences count from, when planning
+ * cannot tell it (see `firstShownFrame`): for a stream copied from its start, the first frame that
+ * decodes (`null`); after an exact cut in seconds, the first frame at or after this time, which
+ * on a variable frame rate may come well after the grid of the average one. `undefined` when
+ * planning knows: no start silence, a cut in frames or at a keyframe, the first frame decoded, or
+ * every frame scanned.
+ */
+export function firstFrameLookup(
+  recipe: Recipe,
+  probe: MediaProbe,
+  frameTimes: FrameTimes | null,
+): number | null | undefined {
+  if (!silences(recipe) || !isTrimSet(recipe.silenceStart)) {
+    return undefined;
+  }
+  if (!reencodesVideo(recipe)) {
+    return isTrimSet(recipe.trimStart) ? undefined : null;
+  }
+  if (
+    !isTrimSet(recipe.trimStart) ||
+    recipe.trimStart.unit === 'frames' ||
+    frameTimes?.complete === true
+  ) {
+    return undefined;
+  }
+  const result = keptRange({ ...recipe, trimEnd: NO_LENGTH }, probe.video, null, frameTimes);
+  return result.ok && result.range.fromSec !== null
+    ? result.range.fromSec - cutMargin(probe.video.frameRate)
+    : undefined;
 }
 
 /** A replacement soundtrack: its first audio stream is used. */
@@ -641,6 +686,8 @@ export interface PlanInput {
   readonly frameTimes: FrameTimes | null;
   /** The keyframe found before `keyframeLookup`'s timestamp; `null` when not looked up or not found. */
   readonly keyframe: Keyframe | null;
+  /** When the first frame of the result shows, from `firstFrameLookup`; `null` when not known. */
+  readonly firstFrameSec: number | null;
 }
 
 export interface Plan {
@@ -658,8 +705,6 @@ export interface Plan {
 export type PlanResult =
   { readonly ok: true; readonly plan: Plan } | { readonly ok: false; readonly message: string };
 
-const NO_LENGTH: Trim = { amount: 0, unit: 'seconds' };
-
 /**
  * The recipe as it applies to a video: without audio, a video has nothing to silence. Its result is
  * named after what is done to it.
@@ -668,6 +713,20 @@ export function appliedRecipe(recipe: Recipe, probe: MediaProbe): Recipe {
   return recipe.audio === 'keep' && probe.audio.length === 0 && silences(recipe)
     ? { ...recipe, silenceStart: NO_LENGTH, silenceEnd: NO_LENGTH }
     : recipe;
+}
+
+/**
+ * Why the audio of a video cannot be silenced, though it has some: ffmpeg cannot decode any of it.
+ * `null` when it can be, or is not to be. Known from the probe: the queue says so when the run
+ * starts, as planning would when the video's turn comes.
+ */
+export function silencedAudioIssue(recipe: Recipe, probe: MediaProbe): string | null {
+  return silences(recipe) &&
+    recipe.audio === 'keep' &&
+    probe.audio.length > 0 &&
+    probe.audio.every((stream) => stream.codec === null)
+    ? 'Its audio cannot be decoded, so it cannot be silenced.'
+    : null;
 }
 
 /** The ffmpeg arguments that apply `recipe` to one video, or why it cannot. */
@@ -686,14 +745,15 @@ export function planJob(input: PlanInput): PlanResult {
     return { ok: false, message: 'Choose the replacement audio.' };
   }
   const silencing = silences(recipe);
+  const undecodable = silencedAudioIssue(recipe, probe);
+  if (undecodable !== null) {
+    return { ok: false, message: undecodable };
+  }
   const kept = recipe.audio === 'keep' ? probe.audio : [];
   // Audio that ffmpeg cannot decode can only be copied as it is: never silenced.
   const carried = kept.filter(
     (stream) => stream.codec !== null || (!silencing && carriesUndecodable(container)),
   );
-  if (silencing && kept.length > 0 && carried.length === 0) {
-    return { ok: false, message: 'Its audio cannot be decoded, so it cannot be silenced.' };
-  }
   const bisected = BISECTED_CONTAINERS.includes(probe.info.container);
   const timing = timingOf(ranged.range, probe, {
     exact,
@@ -701,12 +761,12 @@ export function planJob(input: PlanInput): PlanResult {
     bounded: replace !== null,
     audio: replace !== null || carried.length > 0,
     bisected,
+    // ffmpeg's own start: the container's, of the streams it reads. Not the first frame decoded,
+    // which a recording that starts in the middle of a group of pictures shows later.
     originSec: bisected
       ? Math.min(
-          probe.video.startSec,
-          ...(recipe.audio === 'keep' ? probe.audio : []).map(
-            (stream) => stream.startSec ?? probe.formatStartSec,
-          ),
+          probe.video.streamStartSec ?? probe.video.startSec,
+          ...carried.map((stream) => stream.startSec ?? probe.formatStartSec),
         )
       : probe.formatStartSec,
     seekLeadSec:
@@ -715,7 +775,16 @@ export function planJob(input: PlanInput): PlanResult {
         : 0,
   });
 
-  const silenced = silencing ? silencesOf(recipe, timing, probe.video, input.frameTimes) : null;
+  const silenced = silencing
+    ? silencesOf(
+        recipe,
+        timing,
+        ranged.range.untilSec === null,
+        probe.video,
+        input.frameTimes,
+        input.firstFrameSec,
+      )
+    : null;
   if (silenced?.ok === false) {
     return silenced;
   }

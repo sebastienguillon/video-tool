@@ -196,10 +196,10 @@ describe('videoIssue', () => {
   it('accepts silences that leave some sound, and refuses those that do not', () => {
     const keep = { audio: 'keep' } as const;
     expect(
-      videoIssue(recipe({ ...keep, silenceStart: seconds(1), silenceEnd: frames(59) }), INFO),
+      videoIssue(recipe({ ...keep, silenceStart: seconds(1), silenceEnd: seconds(1.95) }), INFO),
     ).toBeNull();
     expect(
-      videoIssue(recipe({ ...keep, silenceStart: seconds(1), silenceEnd: frames(60) }), INFO),
+      videoIssue(recipe({ ...keep, silenceStart: seconds(1), silenceEnd: seconds(2) }), INFO),
     ).toBe('The silences cover all of it (0:03 long): remove the audio instead.');
     expect(
       videoIssue(
@@ -216,6 +216,28 @@ describe('videoIssue', () => {
     expect(videoIssue(recipe({ audio: 'remove', silenceStart: seconds(5) }), INFO)).toBeNull();
   });
 
+  it('leaves the refusal to planning when the frames or the keyframe decide it', () => {
+    const keep = { audio: 'keep', silenceStart: seconds(2) } as const;
+    // Frames at the average rate: on a variable one, 30 frames may last much less than 1 s.
+    expect(videoIssue(recipe({ ...keep, silenceEnd: frames(30) }), INFO)).toBeNull();
+    expect(
+      videoIssue(recipe({ ...keep, trimEnd: frames(30), silenceEnd: seconds(0.5) }), INFO),
+    ).toBeNull();
+    // A fast cut starts at the keyframe before its start trim: the result may be longer.
+    expect(
+      videoIssue(
+        recipe({ ...keep, precision: 'fast', trimStart: seconds(0.9), silenceEnd: seconds(0.2) }),
+        INFO,
+      ),
+    ).toBeNull();
+    expect(
+      videoIssue(
+        recipe({ ...keep, precision: 'exact', trimStart: seconds(0.9), silenceEnd: seconds(0.2) }),
+        INFO,
+      ),
+    ).toBe('The silences cover all of it (0:02 long once trimmed): remove the audio instead.');
+  });
+
   it('has nothing to silence in a video without audio, which may still be trimmed', () => {
     const silent = { ...INFO, audioCodec: null };
     expect(videoIssue(recipe({ audio: 'keep', silenceStart: seconds(1) }), silent)).toBe(
@@ -228,6 +250,17 @@ describe('videoIssue', () => {
     expect(
       videoIssue(recipe({ audio: 'replace', trackId: 'track', silenceStart: seconds(1) }), silent),
     ).toBeNull();
+    // Silences left out need no frame rate.
+    const unknownRate = { ...silent, frameRate: null };
+    expect(
+      videoIssue(
+        recipe({ audio: 'keep', trimEnd: seconds(1), silenceStart: frames(3) }),
+        unknownRate,
+      ),
+    ).toBeNull();
+    expect(videoIssue(recipe({ audio: 'keep', silenceStart: frames(3) }), unknownRate)).toBe(
+      'It has no audio to silence.',
+    );
   });
 });
 
