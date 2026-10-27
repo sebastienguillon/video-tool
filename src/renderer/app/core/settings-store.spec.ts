@@ -8,6 +8,7 @@ import { SettingsStore } from './settings-store';
 const stored: Settings = {
   recipe: { ...DEFAULT_RECIPE, audio: 'replace', trackId: 't1', loop: false },
   output: { location: 'folder', folder: 'D:\\Exports\\été' },
+  presetId: 'tiktok',
 };
 
 describe('SettingsStore', () => {
@@ -36,6 +37,7 @@ describe('SettingsStore', () => {
   it('loads the stored treatments and output, without saving them back', () => {
     expect(store.recipe()).toEqual(stored.recipe);
     expect(store.output()).toEqual(stored.output);
+    expect(store.presetId()).toBe('tiktok');
     vi.advanceTimersByTime(1_000);
     expect(desktop.callsTo('updateSettings')).toEqual([]);
   });
@@ -48,6 +50,17 @@ describe('SettingsStore', () => {
     store = TestBed.inject(SettingsStore);
     await store.load();
     expect(store.recipe()).toEqual(DEFAULT_SETTINGS.recipe);
+  });
+
+  it('saves the preset applied at once', async () => {
+    await store.setPreset('insta');
+    await store.setPreset('insta');
+    await store.setPreset(null);
+    expect(store.presetId()).toBeNull();
+    expect(desktop.callsTo('updateSettings')).toEqual([
+      [{ presetId: 'insta' }],
+      [{ presetId: null }],
+    ]);
   });
 
   it('saves the treatments once changes pause', () => {

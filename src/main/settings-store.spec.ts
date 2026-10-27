@@ -1,4 +1,4 @@
-import type { Recipe, Settings } from '@shared/model';
+import type { Preset, Recipe, Settings } from '@shared/model';
 import { DEFAULT_RECIPE, DEFAULT_SETTINGS } from '@shared/model';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import type * as fsPromises from 'node:fs/promises';
@@ -8,6 +8,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   parseSettingsFile,
   sanitizeOutput,
+  sanitizePresets,
   sanitizeRecipe,
   sanitizeSettings,
   sanitizeTracks,
@@ -126,6 +127,77 @@ describe('sanitizeSettings', () => {
     expect(sanitizeSettings({ recipe: RECIPE }, new Set(['other'])).recipe.trackId).toBeNull();
     expect(sanitizeSettings('nonsense', new Set())).toEqual(DEFAULT_SETTINGS);
   });
+
+  it('forgets the preset applied last when it is not listed', () => {
+    const presets = new Set(['tiktok']);
+    expect(sanitizeSettings({ presetId: 'tiktok' }, new Set(), presets).presetId).toBe('tiktok');
+    expect(sanitizeSettings({ presetId: 'gone' }, new Set(), presets).presetId).toBeNull();
+    expect(sanitizeSettings({ presetId: 7 }, new Set(), presets).presetId).toBeNull();
+  });
+});
+
+describe('sanitizePresets', () => {
+  const trim = {
+    trimStart: { amount: 0, unit: 'seconds' },
+    trimEnd: { amount: 12, unit: 'frames' },
+    precision: 'exact',
+  } as const;
+
+  it('keeps the valid presets, the first of those with the same id or name', () => {
+    expect(
+      sanitizePresets([
+        { id: 'a', name: '  TikTok ', trim },
+        { id: 'a', name: 'Other', trim },
+        { id: 'b', name: 'tiktok', trim },
+        { id: 'c', name: '   ', trim },
+        { id: '', name: 'Nameless id', trim },
+        { id: 'd', name: 'Sets nothing' },
+        { id: 'e', name: 7, trim },
+        { id: 'f', name: 'Reels', output: { location: 'folder', folder: path.resolve('/Reels') } },
+        'nonsense',
+      ]),
+    ).toEqual([
+      { id: 'a', name: 'TikTok', trim },
+      { id: 'f', name: 'Reels', output: { location: 'folder', folder: path.resolve('/Reels') } },
+    ]);
+    expect(sanitizePresets({ id: 'a' })).toEqual([]);
+  });
+
+  it('sanitizes each section field by field, as the settings', () => {
+    const [preset] = sanitizePresets([
+      {
+        id: 'a',
+        name: 'Beach',
+        audio: { audio: 'replace', trackId: 'gone', loop: 'yes' },
+        silence: { silenceStart: { amount: -1, unit: 'seconds' }, silenceEnd: 3 },
+        trim: { trimEnd: { amount: 2.5, unit: 'frames' }, precision: 'rough' },
+        output: { location: 'cloud', folder: 'relative' },
+        extra: true,
+      },
+    ]);
+    expect(preset).toEqual({
+      id: 'a',
+      name: 'Beach',
+      // Kept, though the audio list may not have it.
+      audio: { audio: 'replace', trackId: 'gone', loop: true },
+      silence: {
+        silenceStart: { amount: 0, unit: 'seconds' },
+        silenceEnd: DEFAULT_RECIPE.silenceEnd,
+      },
+      trim: {
+        trimStart: DEFAULT_RECIPE.trimStart,
+        trimEnd: { amount: 0, unit: 'frames' },
+        precision: 'exact',
+      },
+      output: DEFAULT_SETTINGS.output,
+    } satisfies Preset);
+    // Only a replaced audio has a soundtrack.
+    expect(
+      sanitizePresets([
+        { id: 'k', name: 'Keep', audio: { audio: 'keep', trackId: 'x', loop: false } },
+      ])[0]?.audio,
+    ).toEqual({ audio: 'keep', trackId: null, loop: true });
+  });
 });
 
 describe('sanitizeTracks', () => {
@@ -167,9 +239,27 @@ describe('parseSettingsFile', () => {
     const tracks = [{ id: 'song', path: absolute('song.mp3'), suffix: 'Chanson' }];
     const text = JSON.stringify({ version: 1, settings: { recipe: RECIPE }, tracks });
     expect(parseSettingsFile(`\uFEFF${text}`)).toEqual({
-      settings: { recipe: RECIPE, output: DEFAULT_SETTINGS.output },
+      settings: { recipe: RECIPE, output: DEFAULT_SETTINGS.output, presetId: null },
       tracks,
+      presets: [],
     });
+  });
+
+  it('reads the presets, and the one applied last while it is listed', () => {
+    const presets = [
+      {
+        id: 'tiktok',
+        name: 'TikTok',
+        silence: { silenceStart: RECIPE.silenceStart, silenceEnd: RECIPE.silenceEnd },
+      },
+    ];
+    const text = (presetId: string) =>
+      JSON.stringify({ version: 1, settings: { recipe: RECIPE, presetId }, tracks: [], presets });
+    expect(parseSettingsFile(text('tiktok'))).toMatchObject({
+      settings: { presetId: 'tiktok' },
+      presets,
+    });
+    expect(parseSettingsFile(text('gone'))?.settings.presetId).toBeNull();
   });
 
   it('names the tracks saved without a suffix after their file', () => {
@@ -230,13 +320,28 @@ describe('SettingsStore', () => {
     const output: Settings['output'] = { location: 'folder', folder: path.resolve('/Sorties') };
     expect(store.update({ recipe: RECIPE })).toEqual({ ...DEFAULT_SETTINGS, recipe: RECIPE });
     // The recipe is kept when only the output changes.
-    expect(store.update({ output })).toEqual({ recipe: RECIPE, output });
+    expect(store.update({ output })).toEqual({ recipe: RECIPE, output, presetId: null });
+    const presets: Preset[] = [{ id: 'tiktok', name: 'TikTok', output }];
+    store.setPresets(presets);
+    expect(store.update({ presetId: 'tiktok' }).presetId).toBe('tiktok');
     await store.flush();
 
-    expect(saved()).toEqual({ version: 1, settings: { recipe: RECIPE, output }, tracks });
+    const settings = { recipe: RECIPE, output, presetId: 'tiktok' };
+    expect(saved()).toEqual({ version: 1, settings, tracks, presets });
     const reloaded = await SettingsStore.load(dataDir);
-    expect(reloaded.settings()).toEqual({ recipe: RECIPE, output });
+    expect(reloaded.settings()).toEqual(settings);
     expect(reloaded.tracks()).toEqual(tracks);
+    expect(reloaded.presets()).toEqual(presets);
+  });
+
+  it('forgets the preset applied last when it is deleted, or was never listed', async () => {
+    const store = await SettingsStore.load(dataDir);
+    expect(store.update({ presetId: 'tiktok' }).presetId).toBeNull();
+    store.setPresets([{ id: 'tiktok', name: 'TikTok', output: DEFAULT_SETTINGS.output }]);
+    store.update({ presetId: 'tiktok' });
+    store.setPresets([]);
+    expect(store.settings().presetId).toBeNull();
+    await store.flush();
   });
 
   it('sanitizes updates: invalid lengths become 0, an unknown track is forgotten', async () => {

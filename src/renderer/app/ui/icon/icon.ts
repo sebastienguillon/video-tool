@@ -3,6 +3,7 @@ import { Component, computed, input } from '@angular/core';
 export type IconName =
   | 'alert'
   | 'ban'
+  | 'bookmark'
   | 'circle-check'
   | 'circle-x'
   | 'clock'
@@ -13,11 +14,13 @@ export type IconName =
   | 'loader'
   | 'music'
   | 'pause'
+  | 'pencil'
   | 'play'
   | 'plus'
   | 'rotate-ccw'
   | 'scissors'
   | 'square'
+  | 'trash'
   | 'volume-x'
   | 'x';
 

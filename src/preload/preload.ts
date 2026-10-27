@@ -4,7 +4,7 @@
  */
 import type { DesktopBridge } from '@shared/desktop-api';
 import { IpcChannel } from '@shared/desktop-api';
-import type { AudioTrack, QueueItem } from '@shared/model';
+import type { AudioTrack, Preset, QueueItem } from '@shared/model';
 import type { IpcRendererEvent } from 'electron';
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
@@ -54,6 +54,13 @@ const bridge: DesktopBridge = {
   onTracksChanged: (listener) =>
     subscribe(IpcChannel.tracksChanged, (tracks) => {
       listener(tracks as readonly AudioTrack[]);
+    }),
+  listPresets: invoke('listPresets'),
+  savePreset: invoke('savePreset'),
+  removePreset: invoke('removePreset'),
+  onPresetsChanged: (listener) =>
+    subscribe(IpcChannel.presetsChanged, (presets) => {
+      listener(presets as readonly Preset[]);
     }),
   getSettings: invoke('getSettings'),
   updateSettings: invoke('updateSettings'),

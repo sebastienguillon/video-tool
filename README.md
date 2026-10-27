@@ -14,7 +14,8 @@ them to every video with ffmpeg, one video at a time, and writes the results as 
   with a soundtrack from the audio list, silence it at the start and the end, trim the start and
   the end.
 - The audio list keeps the soundtracks you use from one session to the next, and plays them for a
-  preview.
+  preview. Presets keep treatments you use again under a name, like "TikTok" for 12 frames off the
+  end.
 - Each video shows a still, what ffprobe found (duration, size, frame rate, codecs), and its
   progress and speed. Cancel one or all at any time, and run the failed or canceled ones again.
   Click a video's name to open it, or its folder to show it in Explorer, Finder or the file
@@ -143,6 +144,29 @@ cuts, or a complete ffmpeg build, avoid it.
   frame, so that cuts and frame counts stay the same. Fast cuts copy it as it is.
 - Kept audio is encoded in AAC at 192 kb/s up to stereo and 384 kb/s above; in a WebM, in Opus at
   160 and 320 kb/s (Vorbis without libopus).
+
+## Presets
+
+A preset saves treatments under a name, to set them again in one go: "TikTok" that removes 12
+frames from the end, "Reels" that also replaces the audio and saves in a folder. It sets only the
+sections ticked when it was saved (Audio, Silence, Trim, Save to), and leaves the others as they
+are: applying "TikTok" changes the trims, not the audio chosen.
+
+- Choose a preset in the menu at the top of the panel to apply it. It stays the current preset
+  until another one, or No preset, is chosen, and the window remembers it from one session to the
+  next. Once the treatments change from what it sets, the menu says so ("TikTok (changed)"): Update
+  saves the treatments as its new values, and Apply again sets its own back.
+- Save as preset… (Save as new… when one is current) asks for a name and for the sections to set,
+  each with what it would keep. Names are unique, whatever the case, and keep at most 60
+  characters.
+- The buttons next to the menu rename or delete the current preset. Deleting a preset leaves the
+  treatments as they are.
+- A preset that replaces the audio names a soundtrack of the audio list. Once that soundtrack is
+  removed from the list, the preset says so, and the replacement audio has to be chosen again.
+- A preset that keeps or removes the audio leaves the soundtrack chosen for later; one that saves
+  next to the videos, the folder chosen for later.
+- Results are named after what was done to them (see [Output files](#output-files)), not after the
+  preset.
 
 ## Output files
 
@@ -304,13 +328,14 @@ remuxed to MKV, and its ffprobe reads no field order from H.264.
 ```
 Renderer (Angular 22)  ──window.videoTool──▶  Main process (Electron)
   drop zone, lists,        (preload, IPC)       video list and queue, audio list,
-  treatments          ◀──── list changes ────   settings.json, dialogs, shell
+  treatments, presets ◀──── list changes ────   presets, settings.json, dialogs
         ▲                                         │                  │ child processes,
         └──────── app://, thumb://, track:// ─────┘                  ▼ one video at a time
                                                                ffprobe, ffmpeg
 ```
 
-- **Main** (`src/main`): owns the video list, the queue, the audio list and the settings. It reads
+- **Main** (`src/main`): owns the video list, the queue, the audio list, the presets and the
+  settings. It reads
   each file with `ffprobe` (four at a time), turns the treatments into one `ffmpeg` command per
   video, runs them as child processes one at a time, below normal priority, while following their
   progress, and deletes the partial file of a run that does not finish. What the user does reaches
@@ -331,10 +356,10 @@ Renderer (Angular 22)  ──window.videoTool──▶  Main process (Electron)
 There are no runtime npm dependencies: ffmpeg and ffprobe are separate programs, found as described
 in [Requirements](#requirements).
 
-## Settings and audio list
+## Settings, audio list and presets
 
-The settings (the treatments last chosen, where results go) and the audio list are saved in
-`settings.json` in the data folder: `%APPDATA%\Video Tool` on Windows,
+The settings (the treatments last chosen, where results go, the preset applied last), the audio
+list and the presets are saved in `settings.json` in the data folder: `%APPDATA%\Video Tool` on Windows,
 `~/Library/Application Support/Video Tool` on macOS, `~/.config/Video Tool` on Linux, unless
 `VIDEO_TOOL_USER_DATA` names another.
 
@@ -344,7 +369,7 @@ The settings (the treatments last chosen, where results go) and the audio list a
   again for about 0.4 s, then renamed `settings.json.unreadable-<date>`. One that is not valid JSON,
   or of another format version, is renamed `settings.json.corrupt-<date>`. The date is UTC, as in
   `settings.json.corrupt-2026-10-25T12-04-59-123Z`, and the copy stays in the data folder. Either
-  way, the app starts over with the default settings and an empty audio list.
+  way, the app starts over with the default settings, an empty audio list and no presets.
 - If that file cannot even be renamed, the app never writes over it: changes apply but are not
   saved, and each one tries the rename again; saving resumes once it works. Only the log says so
   (the main process's console): the window shows nothing.
@@ -353,6 +378,8 @@ The settings (the treatments last chosen, where results go) and the audio list a
   list leaves the file alone.
 - Each soundtrack is saved with its suffix (see [Output files](#output-files)), next to its path. A
   soundtrack saved without one, by an earlier version, takes its file name.
+- Each preset is saved with its name and the values of the sections it sets, and nothing for the
+  others. Settings saved by an earlier version have no presets and no silences.
 
 ## Releasing
 

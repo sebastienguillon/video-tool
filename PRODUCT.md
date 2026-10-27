@@ -31,8 +31,8 @@ Four commitments define Video Tool, and future work must not trade any of them a
   does not finish (canceled, failed, quit, or ended with the Windows session) deletes its partial
   file.
 - **Treatments, not editing.** A small set of predefined treatments (keep, remove or replace the
-  audio; silence its start and its end; trim the start and the end; exact or fast cuts), chosen once and applied to the whole
-  batch. Guardrail: **Video Tool is not a video editor.** No timeline, no scrubbing, no per-video
+  audio; silence its start and its end; trim the start and the end; exact or fast cuts), chosen
+  once, or from a preset, and applied to the whole batch. Guardrail: **Video Tool is not a video editor.** No timeline, no scrubbing, no per-video
   edits; a feature that needs them belongs in another app.
 - **Batch first.** Many videos and whole folders at once, one ffmpeg pass per video, one video at a
   time, with progress, cancel and retry.
@@ -57,7 +57,7 @@ Four commitments define Video Tool, and future work must not trade any of them a
   option names each version has; one too old to have them (before 3.4) is refused, with the command
   that updates it where there is one. Installers do not bundle them yet: users install ffmpeg
   themselves.
-- The data folder holds `settings.json`: the settings and the audio list. A file that cannot be
+- The data folder holds `settings.json`: the settings, the audio list and the presets. A file that cannot be
   read or understood is renamed `settings.json.unreadable-<date>` or `settings.json.corrupt-<date>`
   and the app starts with the defaults: never silently lost, and never written over while it
   cannot be renamed.
@@ -80,6 +80,10 @@ Four commitments define Video Tool, and future work must not trade any of them a
   seconds or in whole frames as for trims. A hard cut, the sound next to it fading over 5 ms against
   clicks. It encodes the audio again, never the video. Silences that would leave no sound are
   refused; audio that ffmpeg cannot decode cannot be silenced, and is left out.
+- Presets: treatments saved under a name and kept across restarts, each setting the sections
+  ticked when saving it (audio, silence, trim, output) and leaving the others. The one applied last
+  stays current, says when the treatments changed from it, and can be updated or applied again,
+  renamed or deleted. Names are unique, whatever the case; results are not named after presets.
 - Audio list: kept across restarts. Soundtracks are added as files (no folders) and probed for
   their duration; one whose file is missing or unreadable is marked so, and comes back when the
   file does. Removing one never touches the file.
@@ -107,8 +111,8 @@ Four commitments define Video Tool, and future work must not trade any of them a
   video fails that video, saying why, without stopping the others. Quitting during a run asks
   first; a Windows shutdown, restart or sign-out during one is held off (the user can cancel it),
   and if it goes ahead, ffmpeg is stopped and its partial file deleted before the app exits.
-- Terminology: _video list_, _audio list_, _soundtrack_, _treatments_, _trim_, _silence_, _exact_
-  and _fast_ cuts, _source_ (the original video), _output_ (the new file), _output folder_, _data folder_.
+- Terminology: _video list_, _audio list_, _soundtrack_, _treatments_, _preset_, _trim_, _silence_,
+  _exact_ and _fast_ cuts, _source_ (the original video), _output_ (the new file), _output folder_, _data folder_.
 - Architecture: the main process owns the lists, the settings and the ffmpeg processes; the
   renderer only shows them and asks for changes. No runtime npm dependencies and no native addons.
 - License: MIT, for the app's own code. If installers ever bundle `ffmpeg`/`ffprobe`, releases must

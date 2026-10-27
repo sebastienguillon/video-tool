@@ -3,11 +3,14 @@ import type {
   AddResult,
   AudioTrack,
   Environment,
+  Preset,
+  PresetDraft,
   QueueItem,
   Settings,
   VideoInfo,
 } from '@shared/model';
 import { DEFAULT_SETTINGS } from '@shared/model';
+import { presetIssue, presetName } from '@shared/preset';
 import { trackSuffix } from '@shared/track-suffix';
 
 /** The bridge's methods. */
@@ -72,11 +75,14 @@ export class FakeDesktop implements DesktopBridge {
   platform = 'win32';
   items: readonly QueueItem[] = [];
   tracks: readonly AudioTrack[] = [];
+  presets: readonly Preset[] = [];
   settings: Settings = DEFAULT_SETTINGS;
   readonly calls: { readonly method: Method; readonly args: readonly unknown[] }[] = [];
   private readonly responders = new Map<Method, (...args: never[]) => unknown>();
   private readonly itemListeners = new Set<Listener<readonly QueueItem[]>>();
   private readonly trackListeners = new Set<Listener<readonly AudioTrack[]>>();
+  private readonly presetListeners = new Set<Listener<readonly Preset[]>>();
+  private nextPreset = 1;
 
   readonly pathForFile = (file: File): string =>
     this.call('pathForFile', [file], () => `D:\\Vidéos\\${file.name}`);
@@ -125,6 +131,35 @@ export class FakeDesktop implements DesktopBridge {
       );
       return Promise.resolve(kept);
     });
+  readonly listPresets = (): Promise<readonly Preset[]> =>
+    this.call('listPresets', [], () => Promise.resolve(this.presets));
+  /** Saves as the main process does, refusing what it refuses. */
+  readonly savePreset = (draft: PresetDraft): Promise<Preset> =>
+    this.call('savePreset', [draft], () => {
+      const issue = presetIssue(draft, this.presets, draft.id);
+      if (issue !== null) {
+        return Promise.reject(new Error(`Error invoking remote method 'presets:save': ${issue}`));
+      }
+      const preset: Preset = {
+        ...draft,
+        id: draft.id ?? `preset-${String(this.nextPreset++)}`,
+        name: presetName(draft.name),
+      };
+      this.emitPresets(
+        this.presets.some((candidate) => candidate.id === preset.id)
+          ? this.presets.map((candidate) => (candidate.id === preset.id ? preset : candidate))
+          : [...this.presets, preset],
+      );
+      return Promise.resolve(preset);
+    });
+  readonly removePreset = (id: string): Promise<void> =>
+    this.call('removePreset', [id], () => {
+      this.emitPresets(this.presets.filter((preset) => preset.id !== id));
+      if (this.settings.presetId === id) {
+        this.settings = { ...this.settings, presetId: null };
+      }
+      return Promise.resolve();
+    });
   readonly getSettings = (): Promise<Settings> =>
     this.call('getSettings', [], () => Promise.resolve(this.settings));
   readonly updateSettings = (patch: Partial<Settings>): Promise<Settings> =>
@@ -143,6 +178,11 @@ export class FakeDesktop implements DesktopBridge {
   readonly onTracksChanged = (listener: Listener<readonly AudioTrack[]>): (() => void) => {
     this.trackListeners.add(listener);
     return () => this.trackListeners.delete(listener);
+  };
+
+  readonly onPresetsChanged = (listener: Listener<readonly Preset[]>): (() => void) => {
+    this.presetListeners.add(listener);
+    return () => this.presetListeners.delete(listener);
   };
 
   /** Answers calls to `method` with `responder` from now on. */
@@ -166,6 +206,13 @@ export class FakeDesktop implements DesktopBridge {
     this.tracks = tracks;
     this.trackListeners.forEach((listener) => {
       listener(tracks);
+    });
+  }
+
+  emitPresets(presets: readonly Preset[]): void {
+    this.presets = presets;
+    this.presetListeners.forEach((listener) => {
+      listener(presets);
     });
   }
 

@@ -132,12 +132,45 @@ export interface OutputSettings {
 export interface Settings {
   readonly recipe: Recipe;
   readonly output: OutputSettings;
+  /** The preset applied last, which the treatments may have changed from since; `null`: none. */
+  readonly presetId: string | null;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   recipe: DEFAULT_RECIPE,
   output: { location: 'beside', folder: null },
+  presetId: null,
 };
+
+/**
+ * The parts of the treatments a preset can set, as the panel shows them. Applying a preset changes
+ * those it holds, and leaves the others as they are.
+ */
+export type PresetSection = 'audio' | 'silence' | 'trim' | 'output';
+
+/** In the order of the panel. */
+export const PRESET_SECTIONS: readonly PresetSection[] = ['audio', 'silence', 'trim', 'output'];
+
+/** What a preset holds of the sections it sets; those it leaves alone are absent. */
+export interface PresetValues {
+  /** Keep, remove or replace the audio; the soundtrack and the loop are a replaced audio's. */
+  readonly audio?: Pick<Recipe, 'audio' | 'trackId' | 'loop'>;
+  readonly silence?: Pick<Recipe, 'silenceStart' | 'silenceEnd'>;
+  /** The trims, and how precisely they cut. */
+  readonly trim?: Pick<Recipe, 'trimStart' | 'trimEnd' | 'precision'>;
+  /** Where the results go. */
+  readonly output?: OutputSettings;
+}
+
+/** Treatments saved under a name, to apply them again in one go. Persisted in the data folder. */
+export interface Preset extends PresetValues {
+  readonly id: string;
+  /** Unique, whatever the case (see `presetKey`). */
+  readonly name: string;
+}
+
+/** A preset to save: a new one, without an id yet, or a new version of one. */
+export type PresetDraft = PresetValues & { readonly id?: string; readonly name: string };
 
 /** Where a video of the list stands. Only `running` changes often (progress). */
 export type ItemState =

@@ -1,4 +1,13 @@
-import type { AddResult, AudioTrack, Environment, QueueItem, Recipe, Settings } from './model';
+import type {
+  AddResult,
+  AudioTrack,
+  Environment,
+  Preset,
+  PresetDraft,
+  QueueItem,
+  Recipe,
+  Settings,
+} from './model';
 
 /** Which file of a video-list item to open or reveal. */
 export type ItemFile = 'source' | 'output';
@@ -8,7 +17,8 @@ export type ClearScope = 'all' | 'finished';
 
 /**
  * API the preload script exposes to the renderer as `window.videoTool`. The main process owns the
- * video list, the audio list and the settings; the renderer shows them and asks for changes.
+ * video list, the audio list, the presets and the settings; the renderer shows them and asks for
+ * changes.
  */
 export interface DesktopBridge {
   readonly platform: string;
@@ -60,6 +70,18 @@ export interface DesktopBridge {
   readonly setTrackSuffix: (id: string, suffix: string) => Promise<string | null>;
   readonly onTracksChanged: (listener: (tracks: readonly AudioTrack[]) => void) => () => void;
 
+  // Presets, persisted.
+  readonly listPresets: () => Promise<readonly Preset[]>;
+  /**
+   * Saves a new preset, or a new version of the one with the draft's id; resolves to the preset as
+   * saved, its name cleaned up (see `presetName`). Rejects, saying why, a preset that `presetIssue`
+   * refuses, or the new version of one that was deleted.
+   */
+  readonly savePreset: (draft: PresetDraft) => Promise<Preset>;
+  /** Forgets a preset; the settings no longer name it as the one applied last. */
+  readonly removePreset: (id: string) => Promise<void>;
+  readonly onPresetsChanged: (listener: (presets: readonly Preset[]) => void) => () => void;
+
   // Settings, persisted.
   readonly getSettings: () => Promise<Settings>;
   readonly updateSettings: (patch: Partial<Settings>) => Promise<Settings>;
@@ -87,6 +109,10 @@ export const IpcChannel = {
   removeTrack: 'tracks:remove',
   setTrackSuffix: 'tracks:set-suffix',
   tracksChanged: 'tracks:changed',
+  listPresets: 'presets:list',
+  savePreset: 'presets:save',
+  removePreset: 'presets:remove',
+  presetsChanged: 'presets:changed',
   getSettings: 'settings:get',
   updateSettings: 'settings:update',
   chooseOutputFolder: 'settings:choose-output-folder',

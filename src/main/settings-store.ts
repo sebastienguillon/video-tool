@@ -4,12 +4,15 @@ import type {
   CutPrecision,
   OutputLocation,
   OutputSettings,
+  Preset,
+  PresetValues,
   Recipe,
   Settings,
   Trim,
   TrimUnit,
 } from '@shared/model';
 import { AUDIO_EXTENSIONS, DEFAULT_RECIPE, DEFAULT_SETTINGS } from '@shared/model';
+import { presetKey, presetName, presetSections, presetValues } from '@shared/preset';
 import { trackSuffix } from '@shared/track-suffix';
 import { randomUUID } from 'node:crypto';
 import {
@@ -43,6 +46,7 @@ export interface SavedTrack {
 export interface SettingsData {
   readonly settings: Settings;
   readonly tracks: readonly SavedTrack[];
+  readonly presets: readonly Preset[];
 }
 
 // Records keyed by every member of a union: adding a member to the model fails to compile here.
@@ -117,15 +121,69 @@ export function sanitizeOutput(value: unknown): OutputSettings {
   };
 }
 
-/** The recipe's track must be one of `trackIds`, else it is `null`. */
-export function sanitizeSettings(value: unknown, trackIds: ReadonlySet<string>): Settings {
-  const { recipe, output } = fields(value);
+/**
+ * The recipe's track must be one of `trackIds`, else it is `null`; so must the preset applied last
+ * be one of `presetIds`.
+ */
+export function sanitizeSettings(
+  value: unknown,
+  trackIds: ReadonlySet<string>,
+  presetIds: ReadonlySet<string> = new Set(),
+): Settings {
+  const { recipe, output, presetId } = fields(value);
   const clean = sanitizeRecipe(recipe);
   return {
     recipe:
       clean.trackId !== null && !trackIds.has(clean.trackId) ? { ...clean, trackId: null } : clean,
     output: sanitizeOutput(output),
+    presetId: typeof presetId === 'string' && presetIds.has(presetId) ? presetId : null,
   };
+}
+
+/**
+ * What a preset holds of each section it sets, field by field as for the settings: a section that
+ * is not an object is left out. Its soundtrack may have left the audio list: it is kept, and the
+ * preset then needs another one to replace the audio.
+ */
+export function sanitizePresetValues(value: unknown): PresetValues {
+  const { audio, silence, trim, output } = fields(value);
+  const recipe = sanitizeRecipe({ ...fields(audio), ...fields(silence), ...fields(trim) });
+  const sections = (
+    [
+      ['audio', audio],
+      ['silence', silence],
+      ['trim', trim],
+      ['output', output],
+    ] as const
+  ).flatMap(([section, values]) => (isRecord(values) ? [section] : []));
+  return presetValues(recipe, sanitizeOutput(output), sections);
+}
+
+/**
+ * Valid presets only: an id, a name left once cleaned up, and at least one section. The first of
+ * presets with the same id or name wins.
+ */
+export function sanitizePresets(value: unknown): Preset[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const ids = new Set<string>();
+  const keys = new Set<string>();
+  const presets: Preset[] = [];
+  for (const entry of value as unknown[]) {
+    const { id, name } = fields(entry);
+    if (typeof id !== 'string' || id === '' || typeof name !== 'string') {
+      continue;
+    }
+    const values = sanitizePresetValues(entry);
+    const key = presetKey(name);
+    if (key !== '' && presetSections(values).length > 0 && !ids.has(id) && !keys.has(key)) {
+      ids.add(id);
+      keys.add(key);
+      presets.push({ id, name: presetName(name), ...values });
+    }
+  }
+  return presets;
 }
 
 /**
@@ -176,19 +234,26 @@ export function parseSettingsFile(text: string): SettingsData | null {
     return null;
   }
   const tracks = sanitizeTracks(data['tracks']);
+  // Missing from the settings of earlier versions.
+  const presets = sanitizePresets(data['presets']);
   return {
-    settings: sanitizeSettings(data['settings'], new Set(tracks.map((track) => track.id))),
+    settings: sanitizeSettings(
+      data['settings'],
+      new Set(tracks.map((track) => track.id)),
+      new Set(presets.map((preset) => preset.id)),
+    ),
     tracks,
+    presets,
   };
 }
 
-const EMPTY: SettingsData = { settings: DEFAULT_SETTINGS, tracks: [] };
+const EMPTY: SettingsData = { settings: DEFAULT_SETTINGS, tracks: [], presets: [] };
 
 /** Why `settings.json` was not loaded; it is set aside as `settings.json.<reason>-<date>`. */
 type Unread = 'corrupt' | 'unreadable';
 
 /**
- * The settings and the audio list, in `<data folder>/settings.json`. Changes apply at once in
+ * The settings, the audio list and the presets, in `<data folder>/settings.json`. Changes apply at once in
  * memory; saving follows, one write at a time, a burst of changes making a single write. A write
  * goes to a temporary file renamed over the previous one, so a crash never leaves half a file.
  */
@@ -196,6 +261,7 @@ export class SettingsStore {
   private readonly file: string;
   private current: Settings;
   private savedTracks: readonly SavedTrack[];
+  private savedPresets: readonly Preset[];
   /**
    * Set while `settings.json` still holds what could not be loaded: it must be renamed before the
    * next write, which never goes over it.
@@ -208,6 +274,7 @@ export class SettingsStore {
     this.file = file;
     this.current = data.settings;
     this.savedTracks = data.tracks;
+    this.savedPresets = data.presets;
     this.unread = unread;
   }
 
@@ -248,9 +315,16 @@ export class SettingsStore {
     return this.savedTracks;
   }
 
-  /** `recipe` and `output` are replaced as wholes, then sanitized. Returns the new settings. */
+  presets(): readonly Preset[] {
+    return this.savedPresets;
+  }
+
+  /**
+   * `recipe` and `output` are replaced as wholes, then sanitized; a `presetId` that names no preset
+   * is `null`. Returns the new settings.
+   */
   update(patch: Partial<Settings>): Settings {
-    const next = sanitizeSettings({ ...this.current, ...patch }, this.trackIds());
+    const next = sanitizeSettings({ ...this.current, ...patch }, this.trackIds(), this.presetIds());
     if (JSON.stringify(next) !== JSON.stringify(this.current)) {
       this.current = next;
       this.save();
@@ -261,7 +335,17 @@ export class SettingsStore {
   /** Replaces the audio list. A recipe naming a track no longer listed forgets it. */
   setTracks(tracks: readonly SavedTrack[]): void {
     this.savedTracks = tracks.map(({ id, path: file, suffix }) => ({ id, path: file, suffix }));
-    this.current = sanitizeSettings(this.current, this.trackIds());
+    this.current = sanitizeSettings(this.current, this.trackIds(), this.presetIds());
+    this.save();
+  }
+
+  /**
+   * Replaces the presets, checked beforehand (see `withPreset`). Settings naming one no longer
+   * listed as applied last forget it.
+   */
+  setPresets(presets: readonly Preset[]): void {
+    this.savedPresets = presets;
+    this.current = sanitizeSettings(this.current, this.trackIds(), this.presetIds());
     this.save();
   }
 
@@ -293,8 +377,17 @@ export class SettingsStore {
     return new Set(this.savedTracks.map((track) => track.id));
   }
 
+  private presetIds(): Set<string> {
+    return new Set(this.savedPresets.map((preset) => preset.id));
+  }
+
   private contents(): string {
-    const data = { version: FORMAT_VERSION, settings: this.current, tracks: this.savedTracks };
+    const data = {
+      version: FORMAT_VERSION,
+      settings: this.current,
+      tracks: this.savedTracks,
+      presets: this.savedPresets,
+    };
     return `${JSON.stringify(data, null, 2)}\n`;
   }
 

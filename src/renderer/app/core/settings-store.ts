@@ -15,15 +15,16 @@ const SAVE_DELAY_MS = 400;
 export type LengthKey = 'trimStart' | 'trimEnd' | 'silenceStart' | 'silenceEnd';
 
 /**
- * The treatments and the output location, persisted by the main process so that they survive a
- * restart. The recipe is saved after a pause in changes; the output at once, since processing
- * reads it from the main process.
+ * The treatments, the output location and the preset applied last, persisted by the main process
+ * so that they survive a restart. The recipe is saved after a pause in changes; the others at once,
+ * since processing reads the output from the main process.
  */
 @Injectable({ providedIn: 'root' })
 export class SettingsStore {
   private readonly desktop = inject(DESKTOP);
   private readonly currentRecipe = signal<Recipe>(DEFAULT_SETTINGS.recipe);
   private readonly currentOutput = signal<OutputSettings>(DEFAULT_SETTINGS.output);
+  private readonly currentPreset = signal<string | null>(DEFAULT_SETTINGS.presetId);
   private readonly invalidLengths = signal<ReadonlySet<LengthKey>>(new Set());
   /** The recipe as the main process has it, last loaded or sent. */
   private savedRecipe = DEFAULT_SETTINGS.recipe;
@@ -31,6 +32,8 @@ export class SettingsStore {
 
   readonly recipe = this.currentRecipe.asReadonly();
   readonly output = this.currentOutput.asReadonly();
+  /** The id of the preset applied last; `null`: none, or it was deleted. */
+  readonly presetId = this.currentPreset.asReadonly();
   /**
    * What a field that holds text that is not a length is for: the recipe still has the last valid
    * one. Those of the silences do not count while the audio is removed, which leaves them unused.
@@ -72,6 +75,7 @@ export class SettingsStore {
       this.savedRecipe = settings.recipe;
       this.currentRecipe.set(settings.recipe);
       this.currentOutput.set(settings.output);
+      this.currentPreset.set(settings.presetId);
     }
   }
 
@@ -107,6 +111,18 @@ export class SettingsStore {
       await this.desktop.updateSettings({ output });
     } catch (error) {
       log.warn('Cannot save the output settings:', error);
+    }
+  }
+
+  async setPreset(presetId: string | null): Promise<void> {
+    if (presetId === this.currentPreset()) {
+      return;
+    }
+    this.currentPreset.set(presetId);
+    try {
+      await this.desktop.updateSettings({ presetId });
+    } catch (error) {
+      log.warn('Cannot save the preset applied:', error);
     }
   }
 

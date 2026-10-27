@@ -5,6 +5,8 @@ import type {
   AudioTrack,
   Environment,
   OutputSettings,
+  Preset,
+  PresetDraft,
   QueueItem,
   Recipe,
   Settings,
@@ -14,11 +16,13 @@ import { AUDIO_EXTENSIONS, MIN_FFMPEG_VERSION, VIDEO_EXTENSIONS } from '@shared/
 import { recipeIssue } from '@shared/recipe';
 import type { FileFilter, IpcMainInvokeEvent, OpenDialogOptions } from 'electron';
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { randomUUID } from 'node:crypto';
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { AudioLibrary } from './audio-library';
 import type { MediaTools } from './media/media-tools';
 import { isSupported } from './media/media-tools';
+import { withoutPreset, withPreset } from './presets';
 import type { Queue } from './queue';
 import type { SettingsStore } from './settings-store';
 import {
@@ -40,6 +44,8 @@ const MAX_LIST_LENGTH = 100_000;
 const MAX_ID_LENGTH = 256;
 /** Far more than a suffix keeps (see `trackSuffix`), but not a whole file's worth. */
 const MAX_SUFFIX_LENGTH = 10_000;
+/** Far more than a preset's name keeps (see `presetName`), likewise. */
+const MAX_NAME_LENGTH = 10_000;
 
 const ALL_FILES: FileFilter = { name: 'All files', extensions: ['*'] };
 
@@ -180,6 +186,23 @@ export function registerIpc({
     library.setSuffix(parseId(id), parseSuffix(suffix)),
   );
 
+  handle('listPresets', () => store.presets());
+
+  handle('savePreset', (_event, draft) => {
+    const { presets, preset } = withPreset(store.presets(), parsePresetDraft(draft), randomUUID());
+    store.setPresets(presets);
+    broadcast(IpcChannel.presetsChanged, presets);
+    return preset;
+  });
+
+  handle('removePreset', (_event, id) => {
+    const presets = withoutPreset(store.presets(), parseId(id));
+    if (presets !== store.presets()) {
+      store.setPresets(presets);
+      broadcast(IpcChannel.presetsChanged, presets);
+    }
+  });
+
   handle('getSettings', () => store.settings());
 
   handle('updateSettings', (_event, patch) => store.update(parseSettingsPatch(patch)));
@@ -223,8 +246,11 @@ export function toolsIssue(tools: MediaTools | null): string | null {
 
 /** Sends a change to every window still open. */
 export function broadcast(
-  channel: typeof IpcChannel.itemsChanged | typeof IpcChannel.tracksChanged,
-  payload: readonly QueueItem[] | readonly AudioTrack[],
+  channel:
+    | typeof IpcChannel.itemsChanged
+    | typeof IpcChannel.tracksChanged
+    | typeof IpcChannel.presetsChanged,
+  payload: readonly QueueItem[] | readonly AudioTrack[] | readonly Preset[],
 ): void {
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
@@ -370,6 +396,50 @@ export function parseRecipe(value: unknown): Recipe {
   };
 }
 
+/**
+ * Checks the shape only, as for recipes: an empty name, one already taken, or a preset that sets
+ * nothing is for `presetIssue` to explain.
+ */
+export function parsePresetDraft(value: unknown): PresetDraft {
+  const { id, name, audio, silence, trim, output } = fieldsOf(value, 'preset');
+  if (
+    !(id === undefined || isId(id)) ||
+    typeof name !== 'string' ||
+    name.length > MAX_NAME_LENGTH
+  ) {
+    throw invalid('preset');
+  }
+  return {
+    ...(id === undefined ? {} : { id }),
+    name,
+    ...(audio === undefined ? {} : { audio: parsePresetAudio(audio) }),
+    ...(silence === undefined ? {} : { silence: parsePresetSilence(silence) }),
+    ...(trim === undefined ? {} : { trim: parsePresetTrim(trim) }),
+    ...(output === undefined ? {} : { output: parseOutput(output) }),
+  };
+}
+
+function parsePresetAudio(value: unknown): NonNullable<PresetDraft['audio']> {
+  const { audio, trackId, loop } = fieldsOf(value, 'preset');
+  if (!isAudioMode(audio) || !(trackId === null || isId(trackId)) || typeof loop !== 'boolean') {
+    throw invalid('preset');
+  }
+  return { audio, trackId, loop };
+}
+
+function parsePresetSilence(value: unknown): NonNullable<PresetDraft['silence']> {
+  const { silenceStart, silenceEnd } = fieldsOf(value, 'preset');
+  return { silenceStart: parseTrim(silenceStart), silenceEnd: parseTrim(silenceEnd) };
+}
+
+function parsePresetTrim(value: unknown): NonNullable<PresetDraft['trim']> {
+  const { trimStart, trimEnd, precision } = fieldsOf(value, 'preset');
+  if (!isCutPrecision(precision)) {
+    throw invalid('preset');
+  }
+  return { trimStart: parseTrim(trimStart), trimEnd: parseTrim(trimEnd), precision };
+}
+
 function parseTrim(value: unknown): Trim {
   const { amount, unit } = fieldsOf(value, 'trim');
   if (typeof amount !== 'number' || !isTrimUnit(unit)) {
@@ -391,13 +461,19 @@ export function parseOutput(value: unknown): OutputSettings {
 
 export function parseSettingsPatch(value: unknown): Partial<Settings> {
   const patch = fieldsOf(value, 'settings');
-  if (Object.keys(patch).some((key) => key !== 'recipe' && key !== 'output')) {
+  if (
+    Object.keys(patch).some((key) => key !== 'recipe' && key !== 'output' && key !== 'presetId')
+  ) {
     throw invalid('settings');
   }
-  const { recipe, output } = patch;
+  const { recipe, output, presetId } = patch;
+  if (!(presetId === undefined || presetId === null || isId(presetId))) {
+    throw invalid('settings');
+  }
   return {
     ...(recipe === undefined ? {} : { recipe: parseRecipe(recipe) }),
     ...(output === undefined ? {} : { output: parseOutput(output) }),
+    ...(presetId === undefined ? {} : { presetId }),
   };
 }
 

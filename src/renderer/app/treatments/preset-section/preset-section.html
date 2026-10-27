@@ -1,0 +1,160 @@
+<section class="section" aria-labelledby="preset-heading">
+  <h2 id="preset-heading" class="section-title"><app-icon name="bookmark" /> Preset</h2>
+  @switch (mode()) {
+    @case ('delete') {
+      <form
+        class="form"
+        role="alertdialog"
+        aria-labelledby="preset-delete-question"
+        aria-describedby="preset-delete-note"
+        (submit)="submit($event)"
+        (keydown.escape)="cancel($event)"
+      >
+        <p id="preset-delete-question" class="question">
+          Delete the preset “{{ current()?.name }}”?
+        </p>
+        <p id="preset-delete-note" class="hint">The treatments stay as they are.</p>
+        @if (error(); as message) {
+          <p class="error-text" role="alert">{{ message }}</p>
+        }
+        <div class="buttons">
+          <button #cancelButton type="button" class="button compact" (click)="cancel()">
+            Cancel
+          </button>
+          <button type="submit" class="button compact danger" [disabled]="busy()">Delete</button>
+        </div>
+      </form>
+    }
+    @case ('browse') {
+      @if (presets().length > 0) {
+        <div class="row">
+          <select
+            #menu
+            class="select"
+            aria-label="Preset"
+            aria-describedby="preset-summary"
+            (change)="choose($event)"
+          >
+            <option value="" [selected]="current() === null">No preset</option>
+            @for (preset of presets(); track preset.id) {
+              @let isCurrent = preset.id === current()?.id;
+              <option [value]="preset.id" [selected]="isCurrent">
+                {{ preset.name }}{{ isCurrent && modified() ? ' (changed)' : '' }}
+              </option>
+            }
+          </select>
+          @if (current(); as preset) {
+            <button
+              #renameButton
+              type="button"
+              class="icon-button"
+              title="Rename"
+              [attr.aria-label]="`Rename the preset ${preset.name}`"
+              (click)="startRename(preset)"
+            >
+              <app-icon name="pencil" />
+            </button>
+            <button
+              #deleteButton
+              type="button"
+              class="icon-button"
+              title="Delete"
+              [attr.aria-label]="`Delete the preset ${preset.name}`"
+              (click)="startDelete()"
+            >
+              <app-icon name="trash" />
+            </button>
+          }
+        </div>
+        <p id="preset-summary" class="hint">
+          {{ summary() }}
+          @if (trackMissing()) {
+            <span class="warning-text">Its soundtrack is no longer in the audio list.</span>
+          }
+        </p>
+      } @else {
+        <p class="hint">Save the treatments as a preset, to set them again in one go.</p>
+      }
+      <div class="buttons">
+        @if (current(); as preset) {
+          @if (modified()) {
+            <button
+              type="button"
+              class="button compact"
+              [attr.aria-label]="`Update the preset ${preset.name} with the treatments`"
+              [disabled]="busy()"
+              (click)="update(preset)"
+            >
+              Update
+            </button>
+            <button
+              type="button"
+              class="button compact"
+              [attr.aria-label]="`Apply the preset ${preset.name} again`"
+              (click)="applyAgain(preset)"
+            >
+              Apply again
+            </button>
+          }
+        }
+        <button #saveButton type="button" class="button compact" (click)="startSave()">
+          {{ current() === null ? 'Save as preset…' : 'Save as new…' }}
+        </button>
+      </div>
+      @if (error(); as message) {
+        <p class="error-text" role="alert">{{ message }}</p>
+      }
+    }
+    @default {
+      @let saving = mode() === 'save';
+      <form
+        class="form"
+        [attr.aria-label]="saving ? 'Save as a preset' : 'Rename the preset'"
+        (submit)="submit($event)"
+        (keydown.escape)="cancel($event)"
+      >
+        <label class="label" for="preset-name">{{ saving ? 'Name' : 'New name' }}</label>
+        <input
+          #nameInput
+          id="preset-name"
+          type="text"
+          class="input"
+          autocomplete="off"
+          spellcheck="false"
+          [attr.maxlength]="maxLength"
+          [attr.placeholder]="saving ? 'e.g. TikTok' : null"
+          [value]="name()"
+          (input)="setName($event)"
+        />
+        @if (saving) {
+          <fieldset class="sets">
+            <legend>Sets</legend>
+            @for (section of sections; track section) {
+              @let id = `preset-sets-${section}`;
+              <div class="choice">
+                <input
+                  type="checkbox"
+                  [id]="id"
+                  [attr.aria-describedby]="`${id}-description`"
+                  [checked]="chosen().has(section)"
+                  (change)="toggle(section, $event)"
+                />
+                <label [for]="id">{{ labels[section] }}</label>
+                <p class="description" [id]="`${id}-description`">{{ describe(section) }}</p>
+              </div>
+            }
+          </fieldset>
+        }
+        @if (error(); as message) {
+          <p class="error-text" role="alert">{{ message }}</p>
+        }
+        <div class="buttons">
+          <button type="button" class="button compact" (click)="cancel()">Cancel</button>
+          <button type="submit" class="button compact primary" [disabled]="busy()">
+            {{ saving ? 'Save' : 'Rename' }}
+          </button>
+        </div>
+      </form>
+    }
+  }
+</section>

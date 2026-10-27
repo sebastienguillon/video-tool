@@ -1,5 +1,4 @@
-import type { OnInit } from '@angular/core';
-import { Component, computed, input, linkedSignal, model, output } from '@angular/core';
+import { Component, computed, effect, input, linkedSignal, model, output } from '@angular/core';
 import type { Trim, TrimUnit } from '@shared/model';
 import { formatTime, parseFrames, parseTime } from '@shared/time';
 
@@ -28,12 +27,13 @@ export function formatLength(trim: Trim): string {
   templateUrl: './length-field.html',
   styleUrl: './length-field.css',
 })
-export class LengthField implements OnInit {
+export class LengthField {
   readonly label = input.required<string>();
   readonly value = model.required<Trim>();
   /**
-   * Emitted when the text starts or stops being a valid length, and once created, valid: a field
-   * shown again starts with its value, whatever text it had when it was taken away.
+   * Emitted once created, and whenever the text starts or stops being a valid length: typed, or
+   * replaced by a new value (a preset applied), which also writes over text that was not one. A
+   * field shown again starts with its value, whatever text it had when it was taken away.
    */
   readonly validityChange = output<boolean>();
 
@@ -55,20 +55,18 @@ export class LengthField implements OnInit {
     return this.invalid() ? 'Enter a whole number of frames.' : 'A whole number, e.g. 12';
   });
 
-  ngOnInit(): void {
-    this.validityChange.emit(true);
+  constructor() {
+    effect(() => {
+      this.validityChange.emit(!this.invalid());
+    });
   }
 
   protected onInput(event: Event): void {
-    const wasInvalid = this.invalid();
     const text = (event.target as HTMLInputElement).value;
     this.text.set(text);
     const amount = parseLength(text, this.unit());
     if (amount !== null && amount !== this.value().amount) {
       this.value.set({ amount, unit: this.unit() });
-    }
-    if (wasInvalid !== this.invalid()) {
-      this.validityChange.emit(!this.invalid());
     }
   }
 
@@ -86,13 +84,9 @@ export class LengthField implements OnInit {
    */
   protected setUnit(event: Event): void {
     const unit = (event.target as HTMLSelectElement).value as TrimUnit;
-    const wasInvalid = this.invalid();
     // Text that is not a length in the old unit may be one in the new: `12.5` frames.
-    const amount = wasInvalid ? parseLength(this.text(), unit) : this.value().amount;
+    const amount = this.invalid() ? parseLength(this.text(), unit) : this.value().amount;
     const kept = amount !== null && (unit === 'seconds' || Number.isSafeInteger(amount));
     this.value.set({ amount: kept ? amount : 0, unit });
-    if (wasInvalid) {
-      this.validityChange.emit(true);
-    }
   }
 }

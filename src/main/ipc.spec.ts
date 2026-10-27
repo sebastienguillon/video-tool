@@ -13,6 +13,7 @@ import {
   parseIds,
   parseItemFile,
   parseOutput,
+  parsePresetDraft,
   parseRecipe,
   parseSettingsPatch,
   parseStrings,
@@ -190,9 +191,52 @@ describe('parseOutput and parseSettingsPatch', () => {
     expect(parseSettingsPatch({ output: { location: 'folder', folder } })).toEqual({
       output: { location: 'folder', folder },
     });
+    expect(parseSettingsPatch({ presetId: 'tiktok' })).toEqual({ presetId: 'tiktok' });
+    expect(parseSettingsPatch({ presetId: null })).toEqual({ presetId: null });
     expect(() => parseSettingsPatch({ theme: 'dark' })).toThrow('Invalid settings.');
     expect(() => parseSettingsPatch({ recipe: {} })).toThrow('Invalid recipe.');
+    expect(() => parseSettingsPatch({ presetId: '' })).toThrow('Invalid settings.');
     expect(() => parseSettingsPatch(null)).toThrow('Invalid settings.');
+  });
+});
+
+describe('parsePresetDraft', () => {
+  const folder = path.resolve('/Vidéos/Reels');
+  const PRESET = {
+    id: 'tiktok',
+    name: 'TikTok',
+    audio: { audio: 'replace', trackId: 'song', loop: false },
+    silence: { silenceStart: RECIPE.silenceStart, silenceEnd: RECIPE.silenceEnd },
+    trim: { trimStart: RECIPE.trimStart, trimEnd: RECIPE.trimEnd, precision: 'fast' },
+    output: { location: 'folder', folder },
+  } as const;
+
+  it('rebuilds a well-formed draft, with only the sections given', () => {
+    expect(parsePresetDraft({ ...PRESET, extra: 1 })).toEqual(PRESET);
+    expect(parsePresetDraft({ name: 'New', trim: PRESET.trim })).toEqual({
+      name: 'New',
+      trim: PRESET.trim,
+    });
+  });
+
+  it('leaves names and empty presets for presetIssue to explain', () => {
+    expect(parsePresetDraft({ name: '' })).toEqual({ name: '' });
+  });
+
+  it('rejects a malformed draft', () => {
+    for (const draft of [
+      null,
+      { ...PRESET, id: '' },
+      { ...PRESET, name: 7 },
+      { ...PRESET, name: 'a'.repeat(10_001) },
+      { ...PRESET, audio: { audio: 'mute', trackId: null, loop: true } },
+      { ...PRESET, audio: { ...PRESET.audio, trackId: '' } },
+      { ...PRESET, silence: { silenceStart: RECIPE.silenceStart } },
+      { ...PRESET, trim: { ...PRESET.trim, precision: 'rough' } },
+      { ...PRESET, output: { location: 'folder', folder: 'Reels' } },
+    ]) {
+      expect(() => parsePresetDraft(draft)).toThrow(/^Invalid (preset|trim|output settings)\.$/);
+    }
   });
 });
 

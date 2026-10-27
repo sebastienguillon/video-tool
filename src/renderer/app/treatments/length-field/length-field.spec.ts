@@ -52,6 +52,17 @@ describe('LengthField', () => {
     expect(validity).toEqual([true]);
   });
 
+  it('shows a new value over text that was not a length, and says it is valid again', async () => {
+    await type('soon');
+    expect(validity).toEqual([true, false]);
+    fixture.componentRef.setInput('value', { amount: 12, unit: 'frames' } satisfies Trim);
+    await fixture.whenStable();
+    expect(input().value).toBe('12');
+    expect(select().value).toBe('frames');
+    expect(input().getAttribute('aria-invalid')).toBe('false');
+    expect(validity).toEqual([true, false, true]);
+  });
+
   it('changes the value as soon as the text reads as a length, and writes it back on leaving', async () => {
     await type('1:5');
     expect(value()).toEqual({ amount: 65, unit: 'seconds' });
