@@ -1,24 +1,63 @@
-.row {
+.presets {
   display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* A preset to apply; the current one stands out, as the segments of a choice do. */
+.preset {
+  display: inline-flex;
   align-items: center;
   gap: 4px;
+  max-width: 100%;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 13px;
+  background: var(--field-bg);
+  color: var(--text);
+  font: inherit;
 }
 
-/* Whatever room the buttons leave, with no size of its own: names can be long. */
-.row .select {
-  flex: 1;
-  width: 0;
+.preset:hover:not(.current) {
+  background: var(--hover);
 }
 
-.row + .hint {
-  margin-top: 6px;
+.preset.current {
+  border-color: var(--accent-fill);
+  background: var(--accent-fill);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.preset-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.changed {
+  flex: none;
+  font-weight: normal;
+  opacity: 0.85;
+}
+
+.presets + .hint {
+  margin-top: 8px;
 }
 
 .buttons {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
   margin-top: 10px;
+}
+
+/* At the end of the row: they act on the current preset, not on the treatments. */
+.tools {
+  display: inline-flex;
+  margin-left: auto;
 }
 
 .form {
@@ -42,10 +81,7 @@
   padding: 0;
 }
 
-.form .error-text {
-  margin: 8px 0 0;
-}
-
+.form .error-text,
 .buttons + .error-text {
   margin: 8px 0 0;
 }

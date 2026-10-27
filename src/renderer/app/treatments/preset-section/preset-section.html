@@ -1,5 +1,5 @@
 <section class="section" aria-labelledby="preset-heading">
-  <h2 id="preset-heading" class="section-title"><app-icon name="bookmark" /> Preset</h2>
+  <h2 id="preset-heading" class="section-title"><app-icon name="bookmark" /> Presets</h2>
   @switch (mode()) {
     @case ('delete') {
       <form
@@ -14,8 +14,8 @@
           Delete the preset “{{ current()?.name }}”?
         </p>
         <p id="preset-delete-note" class="hint">The treatments stay as they are.</p>
-        @if (error(); as message) {
-          <p class="error-text" role="alert">{{ message }}</p>
+        @for (failure of failures(); track failure) {
+          <p class="error-text" role="alert">{{ failure.text }}</p>
         }
         <div class="buttons">
           <button #cancelButton type="button" class="button compact" (click)="cancel()">
@@ -27,49 +27,34 @@
     }
     @case ('browse') {
       @if (presets().length > 0) {
-        <div class="row">
-          <select
-            #menu
-            class="select"
-            aria-label="Preset"
-            aria-describedby="preset-summary"
-            (change)="choose($event)"
-          >
-            <option value="" [selected]="current() === null">No preset</option>
-            @for (preset of presets(); track preset.id) {
-              @let isCurrent = preset.id === current()?.id;
-              <option [value]="preset.id" [selected]="isCurrent">
-                {{ preset.name }}{{ isCurrent && modified() ? ' (changed)' : '' }}
-              </option>
-            }
-          </select>
-          @if (current(); as preset) {
+        <div class="presets" role="group" aria-labelledby="preset-heading">
+          @for (preset of presets(); track preset.id) {
+            @let isCurrent = preset.id === current()?.id;
             <button
-              #renameButton
+              #presetButton
               type="button"
-              class="icon-button"
-              title="Rename"
-              [attr.aria-label]="`Rename the preset ${preset.name}`"
-              (click)="startRename(preset)"
+              class="preset"
+              [class.current]="isCurrent"
+              [attr.data-preset-id]="preset.id"
+              [attr.aria-current]="isCurrent ? 'true' : null"
+              [attr.aria-describedby]="isCurrent ? 'preset-summary' : null"
+              [title]="preset.name"
+              (click)="apply(preset)"
             >
-              <app-icon name="pencil" />
-            </button>
-            <button
-              #deleteButton
-              type="button"
-              class="icon-button"
-              title="Delete"
-              [attr.aria-label]="`Delete the preset ${preset.name}`"
-              (click)="startDelete()"
-            >
-              <app-icon name="trash" />
+              <span class="preset-name">{{ preset.name }}</span>
+              @if (isCurrent && modified()) {
+                <!-- The space keeps the name and the mark apart for screen readers. -->
+                <span class="changed">{{ ' (changed)' }}</span>
+              }
             </button>
           }
         </div>
         <p id="preset-summary" class="hint">
           {{ summary() }}
-          @if (trackMissing()) {
-            <span class="warning-text">Its soundtrack is no longer in the audio list.</span>
+          @if (soundtrackMissing()) {
+            <span class="warning-text">
+              Its soundtrack is not in the audio list: choose one, then update the preset.
+            </span>
           }
         </p>
       } @else {
@@ -81,7 +66,7 @@
             <button
               type="button"
               class="button compact"
-              [attr.aria-label]="`Update the preset ${preset.name} with the treatments`"
+              aria-describedby="preset-summary"
               [disabled]="busy()"
               (click)="update(preset)"
             >
@@ -90,8 +75,8 @@
             <button
               type="button"
               class="button compact"
-              [attr.aria-label]="`Apply the preset ${preset.name} again`"
-              (click)="applyAgain(preset)"
+              aria-describedby="preset-summary"
+              (click)="apply(preset)"
             >
               Apply again
             </button>
@@ -100,9 +85,33 @@
         <button #saveButton type="button" class="button compact" (click)="startSave()">
           {{ current() === null ? 'Save as preset…' : 'Save as new…' }}
         </button>
+        @if (current(); as preset) {
+          <span class="tools">
+            <button
+              #renameButton
+              type="button"
+              class="icon-button small"
+              title="Rename"
+              [attr.aria-label]="`Rename ${preset.name}`"
+              (click)="startRename(preset)"
+            >
+              <app-icon name="pencil" />
+            </button>
+            <button
+              #deleteButton
+              type="button"
+              class="icon-button small"
+              title="Delete"
+              [attr.aria-label]="`Delete ${preset.name}`"
+              (click)="startDelete()"
+            >
+              <app-icon name="trash" />
+            </button>
+          </span>
+        }
       </div>
-      @if (error(); as message) {
-        <p class="error-text" role="alert">{{ message }}</p>
+      @for (failure of failures(); track failure) {
+        <p class="error-text" role="alert">{{ failure.text }}</p>
       }
     }
     @default {
@@ -121,8 +130,9 @@
           class="input"
           autocomplete="off"
           spellcheck="false"
-          [attr.maxlength]="maxLength"
           [attr.placeholder]="saving ? 'e.g. TikTok' : null"
+          [attr.aria-invalid]="failure() === null ? null : 'true'"
+          [attr.aria-describedby]="failure() === null ? null : 'preset-error'"
           [value]="name()"
           (input)="setName($event)"
         />
@@ -145,8 +155,8 @@
             }
           </fieldset>
         }
-        @if (error(); as message) {
-          <p class="error-text" role="alert">{{ message }}</p>
+        @for (failure of failures(); track failure) {
+          <p id="preset-error" class="error-text" role="alert">{{ failure.text }}</p>
         }
         <div class="buttons">
           <button type="button" class="button compact" (click)="cancel()">Cancel</button>

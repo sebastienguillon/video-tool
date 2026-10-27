@@ -26,6 +26,8 @@ export class TracksStore {
   private failedPreview: { readonly trackId: string; readonly notice: Notice | null } | null = null;
 
   readonly tracks = this.list.asReadonly();
+  /** Whether the list arrived from the main process: until then, no track is known to be gone. */
+  readonly loaded = signal(false);
   /** What the last action on the list did. */
   readonly notice = this.board.notice;
   /** The replacement audio of the recipe; `null` when none is chosen, or it left the list. */
@@ -165,6 +167,7 @@ export class TracksStore {
 
   private apply(tracks: readonly AudioTrack[]): void {
     this.list.set(tracks);
+    this.loaded.set(true);
     this.selectPending();
   }
 }

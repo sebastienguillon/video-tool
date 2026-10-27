@@ -1,6 +1,6 @@
 import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core';
 import { createLogger } from '@shared/log';
-import type { Preset, PresetDraft, PresetSection } from '@shared/model';
+import type { Preset, PresetDraft, PresetSection, PresetValues } from '@shared/model';
 import type { Treatments } from '@shared/preset';
 import {
   applyPreset,
@@ -12,6 +12,7 @@ import {
 } from '@shared/preset';
 import { DESKTOP, ipcErrorMessage } from './desktop';
 import { SettingsStore } from './settings-store';
+import { TracksStore } from './tracks-store';
 
 const log = createLogger('presets');
 
@@ -23,11 +24,12 @@ const log = createLogger('presets');
 export class PresetsStore {
   private readonly desktop = inject(DESKTOP);
   private readonly settings = inject(SettingsStore);
+  private readonly tracks = inject(TracksStore);
   private readonly list = signal<readonly Preset[]>([]);
   /** A change arrived: the initial listing, if still on its way, is older. */
   private changed = false;
 
-  /** By name, as the menu lists them. */
+  /** By name, as the panel lists them. */
   readonly presets = computed(() => [...this.list()].sort(byName));
   /** The preset applied last, while it exists. */
   readonly current = computed(() => {
@@ -37,7 +39,12 @@ export class PresetsStore {
   /** Whether the treatments changed, since the current preset was applied, in what it sets. */
   readonly modified = computed(() => {
     const preset = this.current();
-    return preset !== null && !presetMatches(preset, this.treatments());
+    return preset !== null && !presetMatches(this.usable(preset), this.treatments());
+  });
+  /** The current preset replaces the audio, but with no soundtrack of the audio list. */
+  readonly soundtrackMissing = computed(() => {
+    const audio = this.current()?.audio;
+    return audio?.audio === 'replace' && this.usable({ audio }).audio.trackId === null;
   });
 
   constructor() {
@@ -58,19 +65,17 @@ export class PresetsStore {
       });
   }
 
-  /** Sets the sections `preset` holds to its values, and makes it the current preset. */
+  /**
+   * Sets the sections `preset` holds to its values, and makes it the current preset. Length fields
+   * show its lengths, even those already set, over text that was not a length.
+   */
   apply(preset: Preset): void {
-    const { recipe, output } = applyPreset(preset, this.treatments());
-    this.settings.updateRecipe(recipe);
+    const { recipe, output } = applyPreset(this.usable(preset), this.treatments());
+    this.settings.replaceRecipe(recipe);
     if (preset.output !== undefined) {
       void this.settings.setOutput(output);
     }
     void this.settings.setPreset(preset.id);
-  }
-
-  /** No preset is the current one; the treatments stay as they are. */
-  clear(): void {
-    void this.settings.setPreset(null);
   }
 
   /**
@@ -136,6 +141,20 @@ export class PresetsStore {
     );
     void this.settings.setPreset(saved.id);
     return null;
+  }
+
+  /**
+   * The preset without a soundtrack that left the audio list, as the main process saves a recipe
+   * naming one: the treatments then read the same after a restart. A soundtrack added again is
+   * another one.
+   */
+  private usable<T extends PresetValues>(preset: T): T {
+    const { audio } = preset;
+    if (audio === undefined || audio.trackId === null || !this.tracks.loaded()) {
+      return preset;
+    }
+    const listed = this.tracks.tracks().some((track) => track.id === audio.trackId);
+    return listed ? preset : { ...preset, audio: { ...audio, trackId: null } };
   }
 
   private treatments(): Treatments {

@@ -7,10 +7,11 @@ import {
   Injector,
   signal,
   viewChild,
+  viewChildren,
 } from '@angular/core';
 import type { Preset, PresetSection as Section, Trim } from '@shared/model';
 import { PRESET_SECTIONS } from '@shared/model';
-import { PRESET_NAME_MAX_LENGTH, presetSections } from '@shared/preset';
+import { presetSections } from '@shared/preset';
 import { isTrimSet, silences, trims } from '@shared/recipe';
 import { formatTime } from '@shared/time';
 import { PresetsStore } from '../../core/presets-store';
@@ -36,9 +37,15 @@ const NAMES: Readonly<Record<Section, string>> = {
 
 type Mode = 'browse' | 'save' | 'rename' | 'delete';
 
+/** A message of a form; a new one each time, so that a repeated message is announced again. */
+interface Failure {
+  readonly text: string;
+}
+
 /**
  * Presets: apply one, save the treatments as a new one or as the new values of the current one,
- * rename or delete it. Saving, renaming and deleting take the place of the menu until done.
+ * rename or delete it. Each preset is a button: applying one takes a click, never a move through a
+ * menu. Saving, renaming and deleting take the place of the buttons until done.
  */
 @Component({
   selector: 'app-preset-section',
@@ -51,7 +58,7 @@ export class PresetSection {
   private readonly settings = inject(SettingsStore);
   private readonly tracks = inject(TracksStore);
   private readonly injector = inject(Injector);
-  private readonly menu = viewChild<ElementRef<HTMLSelectElement>>('menu');
+  private readonly presetButtons = viewChildren<ElementRef<HTMLButtonElement>>('presetButton');
   private readonly saveButton = viewChild<ElementRef<HTMLButtonElement>>('saveButton');
   private readonly renameButton = viewChild<ElementRef<HTMLButtonElement>>('renameButton');
   private readonly deleteButton = viewChild<ElementRef<HTMLButtonElement>>('deleteButton');
@@ -60,14 +67,19 @@ export class PresetSection {
 
   protected readonly sections = PRESET_SECTIONS;
   protected readonly labels = LABELS;
-  protected readonly maxLength = PRESET_NAME_MAX_LENGTH;
   protected readonly presets = this.store.presets;
   protected readonly current = this.store.current;
   protected readonly modified = this.store.modified;
+  protected readonly soundtrackMissing = this.store.soundtrackMissing;
   protected readonly mode = signal<Mode>('browse');
   protected readonly name = signal('');
   protected readonly chosen = signal<ReadonlySet<Section>>(new Set());
-  protected readonly error = signal<string | null>(null);
+  protected readonly failure = signal<Failure | null>(null);
+  /** For `@for`, which makes a new message element for each new failure. */
+  protected readonly failures = computed(() => {
+    const failure = this.failure();
+    return failure === null ? [] : [failure];
+  });
   protected readonly busy = signal(false);
 
   /** What the current preset sets, and whether the treatments changed since it was applied. */
@@ -76,46 +88,38 @@ export class PresetSection {
     if (preset === null) {
       return 'Choose one to set the treatments it holds.';
     }
-    const sets = `Sets ${sentence(presetSections(preset).map((section) => NAMES[section]))}.`;
+    const sections = sentence(presetSections(preset).map((section) => NAMES[section]));
+    const sets = `${preset.name} sets ${sections}.`;
     return this.modified() ? `${sets} Changed since it was applied.` : sets;
   });
-  /** The current preset replaces the audio with a soundtrack no longer in the audio list. */
-  protected readonly trackMissing = computed(() => {
-    const audio = this.current()?.audio;
-    return (
-      audio?.audio === 'replace' &&
-      audio.trackId !== null &&
-      !this.tracks.tracks().some((track) => track.id === audio.trackId)
-    );
-  });
 
-  protected choose(event: Event): void {
-    const id = (event.target as HTMLSelectElement).value;
-    const preset = this.presets().find((candidate) => candidate.id === id);
-    this.error.set(null);
-    if (preset === undefined) {
-      this.store.clear();
-    } else {
-      this.store.apply(preset);
-    }
-  }
-
-  protected applyAgain(preset: Preset): void {
-    this.error.set(null);
+  /** Applies a preset, or the current one again, setting back what changed since. */
+  protected apply(preset: Preset): void {
+    this.failure.set(null);
     this.store.apply(preset);
+    // Apply again goes away with the change.
+    this.focusCurrent();
   }
 
   protected async update(preset: Preset): Promise<void> {
-    await this.run(() => this.store.update(preset));
+    if (await this.run(() => this.store.update(preset))) {
+      // Update goes away with the change.
+      this.focusCurrent();
+    }
   }
 
-  /** Every section the treatments make use of is ticked; where to save is not. */
+  /**
+   * The sections ticked are those of the current preset, and those the treatments make use of:
+   * the audio when removed or replaced, the silences and the trims when set. Not where to save,
+   * which the other sections do not change.
+   */
   protected startSave(): void {
     const recipe = this.settings.recipe();
     this.name.set('');
     this.chosen.set(
       new Set<Section>([
-        'audio',
+        ...presetSections(this.current() ?? {}),
+        ...(recipe.audio === 'keep' ? [] : (['audio'] as const)),
         ...(silences(recipe) ? (['silence'] as const) : []),
         ...(trims(recipe) ? (['trim'] as const) : []),
       ]),
@@ -152,17 +156,17 @@ export class PresetSection {
     switch (this.mode()) {
       case 'save': {
         const sections = this.sections.filter((section) => this.chosen().has(section));
-        await this.finish(() => this.store.create(this.name(), sections), 'menu');
+        await this.finish(() => this.store.create(this.name(), sections));
         break;
       }
       case 'rename':
         if (preset !== null) {
-          await this.finish(() => this.store.rename(preset, this.name()), 'menu');
+          await this.finish(() => this.store.rename(preset, this.name()));
         }
         break;
       case 'delete':
         if (preset !== null) {
-          await this.finish(() => this.store.remove(preset), 'save');
+          await this.finish(() => this.store.remove(preset));
         }
         break;
       case 'browse':
@@ -175,7 +179,7 @@ export class PresetSection {
     event?.preventDefault();
     const mode = this.mode();
     this.mode.set('browse');
-    this.error.set(null);
+    this.failure.set(null);
     const openers = { rename: this.renameButton, delete: this.deleteButton } as const;
     this.afterRender(() => {
       const opener = mode === 'rename' || mode === 'delete' ? openers[mode] : this.saveButton;
@@ -203,7 +207,7 @@ export class PresetSection {
   }
 
   private open(mode: Mode): void {
-    this.error.set(null);
+    this.failure.set(null);
     this.mode.set(mode);
     // Cancel is the safe default for deleting.
     this.afterRender(() =>
@@ -211,13 +215,14 @@ export class PresetSection {
     );
   }
 
-  /** Runs an action of a form; once done, the form closes and the focus goes to `next`. */
-  private async finish(action: () => Promise<string | null>, next: 'menu' | 'save'): Promise<void> {
+  /**
+   * Runs the action of a form; once done, the form closes, and the focus goes to the current
+   * preset, or to Save as preset… when there is none left.
+   */
+  private async finish(action: () => Promise<string | null>): Promise<void> {
     if (await this.run(action)) {
       this.mode.set('browse');
-      this.afterRender(() =>
-        (next === 'menu' ? this.menu() : this.saveButton())?.nativeElement.focus(),
-      );
+      this.focusCurrent();
     }
   }
 
@@ -227,14 +232,24 @@ export class PresetSection {
       return false;
     }
     this.busy.set(true);
-    this.error.set(null);
+    this.failure.set(null);
     try {
       const error = await action();
-      this.error.set(error);
+      this.failure.set(error === null ? null : { text: error });
       return error === null;
     } finally {
       this.busy.set(false);
     }
+  }
+
+  private focusCurrent(): void {
+    this.afterRender(() => {
+      const id = this.current()?.id;
+      const button = this.presetButtons().find(
+        ({ nativeElement }) => nativeElement.dataset['presetId'] === id,
+      );
+      (button ?? this.saveButton())?.nativeElement.focus();
+    });
   }
 
   private afterRender(callback: () => void): void {

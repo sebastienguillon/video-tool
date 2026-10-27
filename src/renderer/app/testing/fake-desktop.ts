@@ -136,7 +136,11 @@ export class FakeDesktop implements DesktopBridge {
   /** Saves as the main process does, refusing what it refuses. */
   readonly savePreset = (draft: PresetDraft): Promise<Preset> =>
     this.call('savePreset', [draft], () => {
-      const issue = presetIssue(draft, this.presets, draft.id);
+      const deleted =
+        draft.id !== undefined && !this.presets.some((preset) => preset.id === draft.id)
+          ? `The preset “${presetName(draft.name)}” was deleted.`
+          : null;
+      const issue = presetIssue(draft, this.presets, draft.id) ?? deleted;
       if (issue !== null) {
         return Promise.reject(new Error(`Error invoking remote method 'presets:save': ${issue}`));
       }
@@ -162,9 +166,18 @@ export class FakeDesktop implements DesktopBridge {
     });
   readonly getSettings = (): Promise<Settings> =>
     this.call('getSettings', [], () => Promise.resolve(this.settings));
+  /** Forgets a soundtrack or a preset that is not listed, as the main process does. */
   readonly updateSettings = (patch: Partial<Settings>): Promise<Settings> =>
     this.call('updateSettings', [patch], () => {
-      this.settings = { ...this.settings, ...patch };
+      const { recipe, presetId } = { ...this.settings, ...patch };
+      const listed = (id: string | null, list: readonly { readonly id: string }[]) =>
+        id !== null && list.some((entry) => entry.id === id) ? id : null;
+      this.settings = {
+        ...this.settings,
+        ...patch,
+        recipe: { ...recipe, trackId: listed(recipe.trackId, this.tracks) },
+        presetId: listed(presetId, this.presets),
+      };
       return Promise.resolve(this.settings);
     });
   readonly chooseOutputFolder = (): Promise<string | null> =>

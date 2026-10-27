@@ -85,10 +85,23 @@ export class SettingsStore {
       return;
     }
     this.currentRecipe.set(next);
-    clearTimeout(this.saveTimer);
-    this.saveTimer = setTimeout(() => {
-      void this.flush();
-    }, SAVE_DELAY_MS);
+    this.saveLater();
+  }
+
+  /**
+   * Sets the whole recipe, its lengths as new values even when they are the same: a field holding
+   * text that is not a length shows the length again, as for a preset applied.
+   */
+  replaceRecipe(recipe: Recipe): void {
+    const { trimStart, trimEnd, silenceStart, silenceEnd } = recipe;
+    this.currentRecipe.set({
+      ...recipe,
+      trimStart: { ...trimStart },
+      trimEnd: { ...trimEnd },
+      silenceStart: { ...silenceStart },
+      silenceEnd: { ...silenceEnd },
+    });
+    this.saveLater();
   }
 
   setLengthValidity(field: LengthKey, valid: boolean): void {
@@ -159,6 +172,13 @@ export class SettingsStore {
     }
     await this.setOutput({ location: 'folder', folder });
     return true;
+  }
+
+  private saveLater(): void {
+    clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(() => {
+      void this.flush();
+    }, SAVE_DELAY_MS);
   }
 
   /** Saves a recipe change still waiting for its pause, now. */

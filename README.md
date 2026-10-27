@@ -152,17 +152,19 @@ frames from the end, "Reels" that also replaces the audio and saves in a folder.
 sections ticked when it was saved (Audio, Silence, Trim, Save to), and leaves the others as they
 are: applying "TikTok" changes the trims, not the audio chosen.
 
-- Choose a preset in the menu at the top of the panel to apply it. It stays the current preset
-  until another one, or No preset, is chosen, and the window remembers it from one session to the
-  next. Once the treatments change from what it sets, the menu says so ("TikTok (changed)"): Update
-  saves the treatments as its new values, and Apply again sets its own back.
+- The presets are buttons at the top of the panel: clicking one applies it, and it becomes the
+  current preset, until another one is applied. The window remembers it from one session to the
+  next. Once the treatments change from what it sets, it says so ("TikTok (changed)"): Update saves
+  the treatments as its new values, and Apply again (or clicking it) sets its own back.
 - Save as preset… (Save as new… when one is current) asks for a name and for the sections to set,
-  each with what it would keep. Names are unique, whatever the case, and keep at most 60
-  characters.
-- The buttons next to the menu rename or delete the current preset. Deleting a preset leaves the
+  each with what it would keep. Those the treatments use are ticked: the audio when it is removed
+  or replaced, the silences and the trims when set, and the sections of the current preset. Names
+  are unique, whatever the case, and have at most 60 characters.
+- The buttons after Save as new… rename or delete the current preset. Deleting a preset leaves the
   treatments as they are.
 - A preset that replaces the audio names a soundtrack of the audio list. Once that soundtrack is
-  removed from the list, the preset says so, and the replacement audio has to be chosen again.
+  removed from the list (adding the file again makes a new entry), the preset says so: choose
+  another soundtrack, then Update.
 - A preset that keeps or removes the audio leaves the soundtrack chosen for later; one that saves
   next to the videos, the folder chosen for later.
 - Results are named after what was done to them (see [Output files](#output-files)), not after the

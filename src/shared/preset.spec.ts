@@ -11,6 +11,7 @@ import {
   presetName,
   presetSections,
   presetValues,
+  shortPresetName,
 } from './preset';
 
 const seconds = (amount: number) => ({ amount, unit: 'seconds' }) as const;
@@ -26,21 +27,28 @@ function treatments(patch: Partial<Recipe> = {}, output = BESIDE): Treatments {
 const TRIM = { trimStart: seconds(0), trimEnd: frames(12), precision: 'exact' } as const;
 const TIKTOK: Preset = { id: 'tiktok', name: 'TikTok', trim: TRIM };
 
-describe('presetName and presetKey', () => {
+describe('presetName, shortPresetName and presetKey', () => {
   it('cleans up a name as typed', () => {
     expect(presetName('  TikTok   end \t')).toBe('TikTok end');
     expect(presetName(' \n ')).toBe('');
     // Composed, as macOS file names are not.
     expect(presetName('e\u0301te\u0301')).toBe('été');
-    expect(presetName('a'.repeat(70))).toHaveLength(60);
-    // Characters as people count them: an emoji is not cut in half, nor a family of them.
-    expect(presetName(`${'a'.repeat(59)}🎬🎬`)).toBe(`${'a'.repeat(59)}🎬`);
-    expect(presetName(`${'a'.repeat(59)}👨‍👩‍👧x`)).toBe(`${'a'.repeat(59)}👨‍👩‍👧`);
   });
 
-  it('tells names apart whatever their case and spacing', () => {
+  it('cuts names saved elsewhere to the longest kept, in characters as people count them', () => {
+    expect(shortPresetName(` ${'a'.repeat(70)}`)).toBe('a'.repeat(60));
+    // An emoji is not cut in half, nor a family of them.
+    expect(shortPresetName(`${'a'.repeat(59)}🎬🎬`)).toBe(`${'a'.repeat(59)}🎬`);
+    expect(shortPresetName(`${'a'.repeat(59)}👨‍👩‍👧x`)).toBe(`${'a'.repeat(59)}👨‍👩‍👧`);
+  });
+
+  it('tells names apart only when they look different', () => {
     expect(presetKey(' tiktok ')).toBe(presetKey('TikTok'));
     expect(presetKey('Tik  Tok')).toBe(presetKey('tik tok'));
+    // Full-width letters, zero-width spaces and fillers.
+    expect(presetKey('ＴｉｋＴｏｋ')).toBe(presetKey('TikTok'));
+    expect(presetKey('Tik\u200bTok\u2060')).toBe(presetKey('TikTok'));
+    expect(presetKey('\u200b\u3164')).toBe('');
     expect(presetKey('TikTok 2')).not.toBe(presetKey('TikTok'));
   });
 });
@@ -107,6 +115,16 @@ describe('applyPreset', () => {
     );
   });
 
+  it('keeps the folder chosen when a preset saves in a folder it does not name', () => {
+    const noFolder: Preset = {
+      id: 'n',
+      name: 'Folder',
+      output: { location: 'folder', folder: null },
+    };
+    expect(applyPreset(noFolder, treatments({}, BESIDE)).output).toEqual(IN_FOLDER);
+    expect(presetMatches(noFolder, treatments({}, IN_FOLDER))).toBe(true);
+  });
+
   it('leaves the soundtrack and the folder chosen for later, when the preset does not use them', () => {
     const before = treatments({ audio: 'replace', trackId: 'beach', loop: false }, IN_FOLDER);
     const keepBeside: Preset = {
@@ -127,6 +145,19 @@ describe('presetMatches', () => {
     expect(presetMatches(TIKTOK, treatments({ trimEnd: frames(13) }))).toBe(false);
     expect(presetMatches(TIKTOK, treatments({ trimEnd: seconds(12) }))).toBe(false);
     expect(presetMatches(TIKTOK, treatments({ trimEnd: frames(12), precision: 'fast' }))).toBe(
+      false,
+    );
+    // Nor do the silences of an audio removed.
+    const removed: Preset = {
+      id: 'r',
+      name: 'Silent',
+      audio: { audio: 'remove', trackId: null, loop: true },
+      silence: { silenceStart: seconds(0), silenceEnd: seconds(0) },
+    };
+    expect(presetMatches(removed, treatments({ audio: 'remove', silenceEnd: seconds(2) }))).toBe(
+      true,
+    );
+    expect(presetMatches(removed, treatments({ audio: 'keep', silenceEnd: seconds(2) }))).toBe(
       false,
     );
     // The other sections do not matter.
@@ -189,6 +220,14 @@ describe('presetIssue', () => {
       'A preset is already named “TikTok”.',
     );
     expect(presetIssue({ name: 'Reels' }, presets)).toBe('Choose what the preset sets.');
+    expect(presetIssue({ name: '\u200b', trim: TRIM }, presets)).toBe('Name the preset.');
+    expect(presetIssue({ name: 'TikTok\u200b', trim: TRIM }, presets)).toBe(
+      'A preset is already named “TikTok”.',
+    );
+    expect(presetIssue({ name: ` ${'🎬'.repeat(60)} `, trim: TRIM }, presets)).toBeNull();
+    expect(presetIssue({ name: 'a'.repeat(61), trim: TRIM }, presets)).toBe(
+      'Use at most 60 characters for the name.',
+    );
   });
 
   it('lets a preset keep its own name', () => {

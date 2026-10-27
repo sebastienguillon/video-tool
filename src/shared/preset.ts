@@ -7,23 +7,33 @@ import type { OutputSettings, Preset, PresetSection, PresetValues, Recipe, Trim 
 import { DEFAULT_RECIPE, PRESET_SECTIONS } from './model';
 import { trims } from './recipe';
 
-/** Longest name kept, in characters: presets are picked from a menu, in a narrow panel. */
+/** Longest name, in characters: presets are buttons in a narrow panel. */
 export const PRESET_NAME_MAX_LENGTH = 60;
 
-/**
- * A name as typed, cleaned up: white space collapsed to single spaces and trimmed, at most
- * `PRESET_NAME_MAX_LENGTH` characters as people count them (an emoji is one). Empty when nothing is
- * left.
- */
+/** A name as typed, cleaned up: white space collapsed to single spaces, and trimmed. */
 export function presetName(text: string): string {
-  const name = text.normalize('NFC').replace(/\s+/gu, ' ').trim();
-  const characters = [...new Intl.Segmenter().segment(name)].map(({ segment }) => segment);
-  return characters.slice(0, PRESET_NAME_MAX_LENGTH).join('').trim();
+  return text.normalize('NFC').replace(/\s+/gu, ' ').trim();
 }
 
-/** Identity of a name: names that differ only in case or spacing are the same. */
+/** The characters of a name as people count them: an emoji, even a family of them, is one. */
+function characters(name: string): string[] {
+  return [...new Intl.Segmenter().segment(name)].map(({ segment }) => segment);
+}
+
+/** A name cleaned up and cut to `PRESET_NAME_MAX_LENGTH` characters, for names saved elsewhere. */
+export function shortPresetName(text: string): string {
+  return characters(presetName(text)).slice(0, PRESET_NAME_MAX_LENGTH).join('').trim();
+}
+
+/**
+ * Identity of a name: names that look the same are the same, whatever their case, spacing,
+ * compatibility forms (full-width letters) and invisible characters (zero-width spaces). Empty for
+ * a name that shows nothing.
+ */
 export function presetKey(name: string): string {
-  return presetName(name).toLowerCase();
+  return presetName(
+    name.normalize('NFKC').replace(/\p{Default_Ignorable_Code_Point}/gu, ''),
+  ).toLowerCase();
 }
 
 /** The sections a preset sets, in the order of the panel. */
@@ -71,7 +81,7 @@ export interface Treatments {
 /**
  * The treatments once `preset` is applied: the sections it sets take its values, the others stay.
  * Choosing to keep or remove the audio leaves the soundtrack chosen for when it is replaced, and
- * saving next to the videos leaves the folder chosen for when they go in one.
+ * saving next to the videos, or in a folder the preset does not name, the folder chosen.
  */
 export function applyPreset(preset: PresetValues, { recipe, output }: Treatments): Treatments {
   const audio =
@@ -81,16 +91,17 @@ export function applyPreset(preset: PresetValues, { recipe, output }: Treatments
   return {
     recipe: { ...recipe, ...audio, ...preset.silence, ...preset.trim },
     output:
-      preset.output === undefined || preset.output.location === 'folder'
-        ? (preset.output ?? output)
-        : { ...output, location: preset.output.location },
+      preset.output === undefined
+        ? output
+        : { location: preset.output.location, folder: preset.output.folder ?? output.folder },
   };
 }
 
 /**
  * Whether the treatments still are what `preset` sets, in each section it sets. Only what makes a
  * difference counts: a unit with nothing in it, the precision without trims, the soundtrack of an
- * audio kept or removed, the folder when saving next to the videos.
+ * audio kept or removed, the silences of an audio removed, the folder when saving next to the
+ * videos.
  */
 export function presetMatches(preset: PresetValues, treatments: Treatments): boolean {
   return sameTreatments(applyPreset(preset, treatments), treatments);
@@ -103,8 +114,8 @@ export function sameTreatments(a: Treatments, b: Treatments): boolean {
   return (
     ra.audio === rb.audio &&
     (ra.audio !== 'replace' || (ra.trackId === rb.trackId && ra.loop === rb.loop)) &&
-    sameLength(ra.silenceStart, rb.silenceStart) &&
-    sameLength(ra.silenceEnd, rb.silenceEnd) &&
+    (ra.audio === 'remove' ||
+      (sameLength(ra.silenceStart, rb.silenceStart) && sameLength(ra.silenceEnd, rb.silenceEnd))) &&
     sameLength(ra.trimStart, rb.trimStart) &&
     sameLength(ra.trimEnd, rb.trimEnd) &&
     (!trims(ra) || ra.precision === rb.precision) &&
@@ -129,6 +140,9 @@ export function presetIssue(
   const key = presetKey(draft.name);
   if (key === '') {
     return 'Name the preset.';
+  }
+  if (characters(presetName(draft.name)).length > PRESET_NAME_MAX_LENGTH) {
+    return `Use at most ${String(PRESET_NAME_MAX_LENGTH)} characters for the name.`;
   }
   const taken = presets.find((preset) => preset.id !== id && presetKey(preset.name) === key);
   if (taken !== undefined) {

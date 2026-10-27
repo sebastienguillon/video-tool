@@ -28,6 +28,7 @@ import type { SettingsStore } from './settings-store';
 import {
   isAudioMode,
   isCutPrecision,
+  isId,
   isOutputLocation,
   isRecord,
   isTrimUnit,
@@ -41,7 +42,6 @@ type Result<K extends InvokeMethod> = Awaited<ReturnType<DesktopBridge[K]>>;
 
 /** More paths or ids than any drop or selection makes: a renderer bug, not a request. */
 const MAX_LIST_LENGTH = 100_000;
-const MAX_ID_LENGTH = 256;
 /** Far more than a suffix keeps (see `trackSuffix`), but not a whole file's worth. */
 const MAX_SUFFIX_LENGTH = 10_000;
 /** Far more than a preset's name keeps (see `presetName`), likewise. */
@@ -310,10 +310,6 @@ export async function outputIssue(output: OutputSettings): Promise<string | null
 
 function invalid(what: string): Error {
   return new Error(`Invalid ${what}.`);
-}
-
-function isId(value: unknown): value is string {
-  return typeof value === 'string' && value !== '' && value.length <= MAX_ID_LENGTH;
 }
 
 function fieldsOf(value: unknown, what: string): Readonly<Record<string, unknown>> {

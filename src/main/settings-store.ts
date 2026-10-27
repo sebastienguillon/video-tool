@@ -12,7 +12,7 @@ import type {
   TrimUnit,
 } from '@shared/model';
 import { AUDIO_EXTENSIONS, DEFAULT_RECIPE, DEFAULT_SETTINGS } from '@shared/model';
-import { presetKey, presetName, presetSections, presetValues } from '@shared/preset';
+import { presetKey, presetSections, presetValues, shortPresetName } from '@shared/preset';
 import { trackSuffix } from '@shared/track-suffix';
 import { randomUUID } from 'node:crypto';
 import {
@@ -64,6 +64,14 @@ export const isAudioMode = memberOf(AUDIO_MODES);
 export const isTrimUnit = memberOf(TRIM_UNITS);
 export const isCutPrecision = memberOf(CUT_PRECISIONS);
 export const isOutputLocation = memberOf(OUTPUT_LOCATIONS);
+
+/** Longer ids are not the app's (random UUIDs): only a bug or a hand edit makes one. */
+const MAX_ID_LENGTH = 256;
+
+/** An id the app could have made, and can be asked about over IPC. */
+export function isId(value: unknown): value is string {
+  return typeof value === 'string' && value !== '' && value.length <= MAX_ID_LENGTH;
+}
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -160,8 +168,8 @@ export function sanitizePresetValues(value: unknown): PresetValues {
 }
 
 /**
- * Valid presets only: an id, a name left once cleaned up, and at least one section. The first of
- * presets with the same id or name wins.
+ * Valid presets only: an id, a name left once cleaned up (cut to the longest kept), and at least
+ * one section. The first of presets with the same id or name wins.
  */
 export function sanitizePresets(value: unknown): Preset[] {
   if (!Array.isArray(value)) {
@@ -172,7 +180,7 @@ export function sanitizePresets(value: unknown): Preset[] {
   const presets: Preset[] = [];
   for (const entry of value as unknown[]) {
     const { id, name } = fields(entry);
-    if (typeof id !== 'string' || id === '' || typeof name !== 'string') {
+    if (!isId(id) || typeof name !== 'string') {
       continue;
     }
     const values = sanitizePresetValues(entry);
@@ -180,7 +188,7 @@ export function sanitizePresets(value: unknown): Preset[] {
     if (key !== '' && presetSections(values).length > 0 && !ids.has(id) && !keys.has(key)) {
       ids.add(id);
       keys.add(key);
-      presets.push({ id, name: presetName(name), ...values });
+      presets.push({ id, name: shortPresetName(name), ...values });
     }
   }
   return presets;

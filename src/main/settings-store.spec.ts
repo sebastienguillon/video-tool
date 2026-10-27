@@ -154,11 +154,15 @@ describe('sanitizePresets', () => {
         { id: 'd', name: 'Sets nothing' },
         { id: 'e', name: 7, trim },
         { id: 'f', name: 'Reels', output: { location: 'folder', folder: path.resolve('/Reels') } },
+        // Longer than any id the app makes or takes.
+        { id: 'g'.repeat(257), name: 'Long id', trim },
+        { id: 'h', name: `Long ${'name '.repeat(20)}`, trim },
         'nonsense',
       ]),
     ).toEqual([
       { id: 'a', name: 'TikTok', trim },
       { id: 'f', name: 'Reels', output: { location: 'folder', folder: path.resolve('/Reels') } },
+      { id: 'h', name: `Long ${'name '.repeat(10)}name`, trim },
     ]);
     expect(sanitizePresets({ id: 'a' })).toEqual([]);
   });

@@ -81,9 +81,10 @@ Four commitments define Video Tool, and future work must not trade any of them a
   clicks. It encodes the audio again, never the video. Silences that would leave no sound are
   refused; audio that ffmpeg cannot decode cannot be silenced, and is left out.
 - Presets: treatments saved under a name and kept across restarts, each setting the sections
-  ticked when saving it (audio, silence, trim, output) and leaving the others. The one applied last
-  stays current, says when the treatments changed from it, and can be updated or applied again,
-  renamed or deleted. Names are unique, whatever the case; results are not named after presets.
+  ticked when saving it (audio, silence, trim, output) and leaving the others. Each is a button:
+  applying one takes a click. The one applied last stays current, says when the treatments changed
+  from it, and can be updated or applied again, renamed or deleted. Names are unique, whatever the
+  case; results are not named after presets.
 - Audio list: kept across restarts. Soundtracks are added as files (no folders) and probed for
   their duration; one whose file is missing or unreadable is marked so, and comes back when the
   file does. Removing one never touches the file.
