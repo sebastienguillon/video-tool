@@ -1,0 +1,27 @@
+<section class="section" aria-labelledby="silence-heading">
+  <h2 id="silence-heading" class="section-title"><app-icon name="volume-x" /> Silence</h2>
+  @if (removed()) {
+    <p class="hint">The audio is removed: there is nothing to silence.</p>
+  } @else {
+    <div class="fields">
+      <app-length-field
+        label="Silence the start"
+        [value]="recipe().silenceStart"
+        (valueChange)="setSilence('silenceStart', $event)"
+        (validityChange)="setValidity('silenceStart', $event)"
+      />
+      <app-length-field
+        label="Silence the end"
+        [value]="recipe().silenceEnd"
+        (valueChange)="setSilence('silenceEnd', $event)"
+        (validityChange)="setValidity('silenceEnd', $event)"
+      />
+    </div>
+    <p class="hint">
+      Counted on the result, after the trims.
+      @if (silencing()) {
+        Re-encodes the audio, never the video.
+      }
+    </p>
+  }
+</section>

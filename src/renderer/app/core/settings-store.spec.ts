@@ -117,12 +117,26 @@ describe('SettingsStore', () => {
     expect(desktop.settings.output).toEqual({ location: 'folder', folder: 'E:\\日本\\out' });
   });
 
-  it('tells when a trim field holds text that is not a length', () => {
-    store.setTrimValidity('trimStart', false);
-    store.setTrimValidity('trimEnd', false);
-    store.setTrimValidity('trimStart', true);
-    expect(store.trimInputInvalid()).toBe(true);
-    store.setTrimValidity('trimEnd', true);
-    expect(store.trimInputInvalid()).toBe(false);
+  it('tells when a length field holds text that is not a length, and what it is for', () => {
+    store.setLengthValidity('trimStart', false);
+    store.setLengthValidity('trimEnd', false);
+    store.setLengthValidity('trimStart', true);
+    expect(store.invalidLength()).toBe('trim');
+    store.setLengthValidity('trimEnd', true);
+    expect(store.invalidLength()).toBe(null);
+
+    store.updateRecipe({ audio: 'keep' });
+    store.setLengthValidity('silenceEnd', false);
+    expect(store.invalidLength()).toBe('silence');
+    store.setLengthValidity('trimStart', false);
+    expect(store.invalidLength()).toBe('trim');
+    store.setLengthValidity('trimStart', true);
+    // Silences are unused while the audio is removed.
+    store.updateRecipe({ audio: 'remove' });
+    expect(store.invalidLength()).toBe(null);
+    store.updateRecipe({ audio: 'replace' });
+    expect(store.invalidLength()).toBe('silence');
+    store.setLengthValidity('silenceEnd', true);
+    expect(store.invalidLength()).toBe(null);
   });
 });

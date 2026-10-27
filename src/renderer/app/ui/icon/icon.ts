@@ -18,6 +18,7 @@ export type IconName =
   | 'rotate-ccw'
   | 'scissors'
   | 'square'
+  | 'volume-x'
   | 'x';
 
 /** A symbol from the sprite rendered once by `IconSprite`; sized by `font-size`, coloured by `color`. */

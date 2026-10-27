@@ -73,7 +73,10 @@ export interface AudioTrack {
 
 export type TrimUnit = 'seconds' | 'frames';
 
-/** A length to remove: fractional seconds, or a whole number of frames. `0` removes nothing. */
+/**
+ * A length at the start or the end of the video, to remove (a trim) or to silence: fractional
+ * seconds, or a whole number of frames. `0` is none.
+ */
 export interface Trim {
   readonly amount: number;
   readonly unit: TrimUnit;
@@ -96,6 +99,13 @@ export interface Recipe {
   readonly loop: boolean;
   readonly trimStart: Trim;
   readonly trimEnd: Trim;
+  /**
+   * How long the audio, kept or new, is muted at the start and at the end of the result: counted
+   * from its first frame and from the end of its last, once trimmed. Unused when `audio` is
+   * `remove`.
+   */
+  readonly silenceStart: Trim;
+  readonly silenceEnd: Trim;
   readonly precision: CutPrecision;
 }
 
@@ -105,6 +115,8 @@ export const DEFAULT_RECIPE: Recipe = {
   loop: true,
   trimStart: { amount: 0, unit: 'seconds' },
   trimEnd: { amount: 0, unit: 'seconds' },
+  silenceStart: { amount: 0, unit: 'seconds' },
+  silenceEnd: { amount: 0, unit: 'seconds' },
   precision: 'exact',
 };
 

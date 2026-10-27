@@ -9,8 +9,8 @@ web
 ## Users
 
 The author, first: Video Tool is a personal tool for the treatments they keep applying to their own
-videos, in batches: removing or replacing the soundtrack, trimming a few seconds or frames at the
-start or the end. It is free and open source (MIT), so other people may use it later; no outside
+videos, in batches: removing or replacing the soundtrack, silencing it or trimming a few seconds or
+frames at the start or the end. It is free and open source (MIT), so other people may use it later; no outside
 users exist yet.
 
 ## Product Purpose
@@ -31,7 +31,7 @@ Four commitments define Video Tool, and future work must not trade any of them a
   does not finish (canceled, failed, quit, or ended with the Windows session) deletes its partial
   file.
 - **Treatments, not editing.** A small set of predefined treatments (keep, remove or replace the
-  audio; trim the start and the end; exact or fast cuts), chosen once and applied to the whole
+  audio; silence its start and its end; trim the start and the end; exact or fast cuts), chosen once and applied to the whole
   batch. Guardrail: **Video Tool is not a video editor.** No timeline, no scrubbing, no per-video
   edits; a feature that needs them belongs in another app.
 - **Batch first.** Many videos and whole folders at once, one ffmpeg pass per video, one video at a
@@ -76,6 +76,10 @@ Four commitments define Video Tool, and future work must not trade any of them a
 - Audio: keep it, remove it, or replace it with a soundtrack from the audio list. A shorter
   soundtrack starts over (Loop, on by default) or silence fills the rest; a longer one is cut where
   the video ends.
+- Silence: mute the audio, kept or new, at the start and the end of the result, once trimmed, in
+  seconds or in whole frames as for trims. A hard cut, the sound next to it fading over 5 ms against
+  clicks. It encodes the audio again, never the video. Silences that would leave no sound are
+  refused; audio that ffmpeg cannot decode cannot be silenced, and is left out.
 - Audio list: kept across restarts. Soundtracks are added as files (no folders) and probed for
   their duration; one whose file is missing or unreadable is marked so, and comes back when the
   file does. Removing one never touches the file.
@@ -87,12 +91,13 @@ Four commitments define Video Tool, and future work must not trade any of them a
   where the output format takes it (H.264 with libx264 at CRF 18, or the platform's encoder or
   OpenH264 with LGPL builds of ffmpeg; HEVC with libx265 at CRF 20; VP9 and AV1 at CRF 30), and
   re-encodes the audio it keeps (AAC, Opus in WebM); _fast_ copies the streams, and a cut at the
-  start moves back to the keyframe before it. Removing or replacing the audio alone never
-  re-encodes the video.
+  start moves back to the keyframe before it. Removing, replacing or silencing the audio alone
+  never re-encodes the video.
 - Output: next to each source (the default) or in a chosen output folder. The format of the source
   is kept for MP4, M4V, MOV, MKV and WebM (QT gives MOV); others become MP4 when re-encoded, MKV
   when copied. Names say what was done: `<name> (no audio).<ext>`, `<name> (<suffix>).<ext>`,
-  `<name> (trimmed).<ext>`, combined as `<name> (no audio, trimmed).<ext>`; the `<suffix>` of a
+  `<name> (trimmed).<ext>`, `<name> (muted).<ext>`, combined as `<name> (no audio, trimmed).<ext>`
+  or `<name> (<suffix>, trimmed, muted).<ext>`; the `<suffix>` of a
   replaced audio is the soundtrack's, its file name without the extension unless the user typed
   another in the audio list. When taken, `<name> (no audio) 2.<ext>`, 3, and so on. Metadata and
   chapters are kept, and subtitles when the result keeps the source's format and can hold them as
@@ -102,8 +107,8 @@ Four commitments define Video Tool, and future work must not trade any of them a
   video fails that video, saying why, without stopping the others. Quitting during a run asks
   first; a Windows shutdown, restart or sign-out during one is held off (the user can cancel it),
   and if it goes ahead, ffmpeg is stopped and its partial file deleted before the app exits.
-- Terminology: _video list_, _audio list_, _soundtrack_, _treatments_, _trim_, _exact_ and _fast_
-  cuts, _source_ (the original video), _output_ (the new file), _output folder_, _data folder_.
+- Terminology: _video list_, _audio list_, _soundtrack_, _treatments_, _trim_, _silence_, _exact_
+  and _fast_ cuts, _source_ (the original video), _output_ (the new file), _output folder_, _data folder_.
 - Architecture: the main process owns the lists, the settings and the ffmpeg processes; the
   renderer only shows them and asks for changes. No runtime npm dependencies and no native addons.
 - License: MIT, for the app's own code. If installers ever bundle `ffmpeg`/`ffprobe`, releases must

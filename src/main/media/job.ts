@@ -1,6 +1,6 @@
 import { createLogger } from '@shared/log';
-import type { OutputSettings, Recipe } from '@shared/model';
-import { outputLabels, reencodesVideo } from '@shared/recipe';
+import type { OutputSettings, Recipe, Trim } from '@shared/model';
+import { changesNothing, isTrimSet, outputLabels, reencodesVideo, silences } from '@shared/recipe';
 import { randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import { access, open, stat } from 'node:fs/promises';
@@ -16,7 +16,14 @@ import {
   removeFileSync,
 } from './output-files';
 import type { AudioTrackInput, FrameTimes } from './plan';
-import { framesToScan, generatesTimes, keyframeLookup, outputContainer, planJob } from './plan';
+import {
+  appliedRecipe,
+  framesToScan,
+  generatesTimes,
+  keyframeLookup,
+  outputContainer,
+  planJob,
+} from './plan';
 import type { FrameScan, Keyframe, MediaProbe } from './probe';
 import {
   findKeyframe,
@@ -72,7 +79,12 @@ export interface JobInput {
  * `CanceledError`.
  */
 export async function processVideo(input: JobInput): Promise<string> {
-  const { tools, source, recipe, signal } = input;
+  const { tools, source, signal } = input;
+  const recipe = appliedRecipe(input.recipe, input.probe);
+  if (changesNothing(recipe) && silences(input.recipe)) {
+    // Refused before the run already (see `videoIssue`).
+    throw new JobError('It has no audio to silence.');
+  }
   if (!(await isFile(source))) {
     throw new JobError('The video was moved or deleted.');
   }
@@ -80,8 +92,8 @@ export async function processVideo(input: JobInput): Promise<string> {
   await checkFolder(dir);
   // Packets are read as the copy will read them: with the presentation times it works out.
   const genpts = generatesTimes(recipe, input.probe);
-  const probe = await onCutTimeline(input, genpts);
-  const scan = await framesOf(input, probe, genpts);
+  const probe = await onCutTimeline(input, recipe, genpts);
+  const scan = await framesOf(input, recipe, probe, genpts);
   const totalFrames = scan?.complete === true ? scan.count : probe.video.frameCount;
   const times = scan?.times ?? null;
   const frameTimes: FrameTimes | null =
@@ -116,8 +128,11 @@ export async function processVideo(input: JobInput): Promise<string> {
   }
   const { droppedAudio } = planned.plan;
   if (droppedAudio.length > 0) {
+    const reason = silences(recipe)
+      ? 'so they cannot be silenced'
+      : `and ${container.toUpperCase()} cannot hold them as they are`;
     log.warn(
-      `Leaving out audio streams ${droppedAudio.join(', ')} of ${source}: ffmpeg cannot decode them, and ${container.toUpperCase()} cannot hold them as they are.`,
+      `Leaving out audio streams ${droppedAudio.join(', ')} of ${source}: ffmpeg cannot decode them, ${reason}.`,
     );
   }
 
@@ -203,15 +218,16 @@ async function reserve(partial: string, dir: string): Promise<void> {
 }
 
 /**
- * The frames that trims in frames need (see `framesToScan`); `null` when none are needed, or when
- * the scan fails and the container's frame count will do.
+ * The frames that trims and silences in frames need (see `framesToScan`); `null` when none are
+ * needed, or when the scan fails and the container's frame count, or the frame rate, will do.
  */
 async function framesOf(
   input: JobInput,
+  recipe: Recipe,
   probe: MediaProbe,
   genpts: boolean,
 ): Promise<FrameScan | null> {
-  const { tools, source, recipe, signal } = input;
+  const { tools, source, signal } = input;
   const wanted = framesToScan(recipe, probe);
   if (wanted === null) {
     return null;
@@ -231,7 +247,9 @@ async function framesOf(
     return null;
   });
   const counted = scan !== null && scan.count > 0;
-  if (wanted === 'all' && !counted && probe.video.frameCount === null) {
+  // Without the times of its frames, a silence in frames goes by the frame rate.
+  const inFrames = (length: Trim) => isTrimSet(length) && length.unit === 'frames';
+  if (inFrames(recipe.trimEnd) && !counted && probe.video.frameCount === null) {
     throw new JobError('Its number of frames cannot be counted: trim its end in seconds.');
   }
   return counted ? scan : null;
@@ -266,8 +284,12 @@ async function withFirstFrame(input: JobInput): Promise<MediaProbe> {
 }
 
 /** The probe, with the video starting where the time line that the cut goes by says. */
-async function onCutTimeline(input: JobInput, genpts: boolean): Promise<MediaProbe> {
-  if (reencodesVideo(input.recipe)) {
+async function onCutTimeline(
+  input: JobInput,
+  recipe: Recipe,
+  genpts: boolean,
+): Promise<MediaProbe> {
+  if (reencodesVideo(recipe)) {
     return withFirstFrame(input);
   }
   return genpts ? withCopyStart(input) : input.probe;

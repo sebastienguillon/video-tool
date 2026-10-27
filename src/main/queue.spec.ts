@@ -234,7 +234,7 @@ describe('Queue', () => {
   it('refuses a recipe that cannot run', async () => {
     const { queue } = await readyQueue();
     expect(() => queue.start({ ...DEFAULT_RECIPE, audio: 'keep' }, BESIDE, null)).toThrow(
-      'Choose what to do: remove or replace the audio, or trim.',
+      'Choose what to do: remove or replace the audio, silence or trim.',
     );
     const replace: Recipe = { ...DEFAULT_RECIPE, audio: 'replace', trackId: 'song' };
     expect(() => queue.start(replace, BESIDE, null)).toThrow('Choose the replacement audio.');

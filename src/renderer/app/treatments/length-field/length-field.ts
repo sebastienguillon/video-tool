@@ -1,3 +1,4 @@
+import type { OnInit } from '@angular/core';
 import { Component, computed, input, linkedSignal, model, output } from '@angular/core';
 import type { Trim, TrimUnit } from '@shared/model';
 import { formatTime, parseFrames, parseTime } from '@shared/time';
@@ -27,10 +28,13 @@ export function formatLength(trim: Trim): string {
   templateUrl: './length-field.html',
   styleUrl: './length-field.css',
 })
-export class LengthField {
+export class LengthField implements OnInit {
   readonly label = input.required<string>();
   readonly value = model.required<Trim>();
-  /** Emitted when the text starts or stops being a valid length. */
+  /**
+   * Emitted when the text starts or stops being a valid length, and once created, valid: a field
+   * shown again starts with its value, whatever text it had when it was taken away.
+   */
   readonly validityChange = output<boolean>();
 
   protected readonly id = `length-${nextId++}`;
@@ -50,6 +54,10 @@ export class LengthField {
     }
     return this.invalid() ? 'Enter a whole number of frames.' : 'A whole number, e.g. 12';
   });
+
+  ngOnInit(): void {
+    this.validityChange.emit(true);
+  }
 
   protected onInput(event: Event): void {
     const wasInvalid = this.invalid();

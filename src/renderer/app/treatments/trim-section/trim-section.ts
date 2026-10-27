@@ -1,7 +1,7 @@
 import { Component, computed, inject } from '@angular/core';
 import type { CutPrecision, Trim } from '@shared/model';
 import { trims } from '@shared/recipe';
-import type { TrimField } from '../../core/settings-store';
+import type { LengthKey } from '../../core/settings-store';
 import { SettingsStore } from '../../core/settings-store';
 import { Icon } from '../../ui/icon/icon';
 import { LengthField } from '../length-field/length-field';
@@ -19,12 +19,12 @@ export class TrimSection {
   protected readonly recipe = this.settings.recipe;
   protected readonly trimming = computed(() => trims(this.recipe()));
 
-  protected setTrim(field: TrimField, trim: Trim): void {
+  protected setTrim(field: 'trimStart' | 'trimEnd', trim: Trim): void {
     this.settings.updateRecipe(field === 'trimStart' ? { trimStart: trim } : { trimEnd: trim });
   }
 
-  protected setValidity(field: TrimField, valid: boolean): void {
-    this.settings.setTrimValidity(field, valid);
+  protected setValidity(field: LengthKey, valid: boolean): void {
+    this.settings.setLengthValidity(field, valid);
   }
 
   protected setPrecision(precision: CutPrecision): void {

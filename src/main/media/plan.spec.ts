@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { MediaFeatures } from './media-tools';
 import type { FrameTimes, PlanInput } from './plan';
 import {
+  appliedRecipe,
   framesToScan,
   generatesTimes,
   keptRange,
@@ -125,6 +126,19 @@ function planError(patch: Partial<PlanInput> & { readonly recipe: Recipe }): str
   }
   return result.message;
 }
+
+describe('appliedRecipe', () => {
+  it('leaves out the silences of a video without audio, unless a soundtrack replaces it', () => {
+    const silenced = recipe({ audio: 'keep', trimEnd: frames(1), silenceStart: seconds(1) });
+    expect(appliedRecipe(silenced, probeOf({ audio: [] }))).toEqual({
+      ...silenced,
+      silenceStart: seconds(0),
+    });
+    expect(appliedRecipe(silenced, probeOf())).toBe(silenced);
+    const replaced = { ...silenced, audio: 'replace' } as const;
+    expect(appliedRecipe(replaced, probeOf({ audio: [] }))).toBe(replaced);
+  });
+});
 
 /** The value after `flag`, or `null` when the flag is absent. */
 function option(args: readonly string[], flag: string): string | null {
@@ -1051,6 +1065,193 @@ describe('planJob', () => {
     });
   });
 
+  describe('silencing', () => {
+    /** The fades that mute the audio before `untilSec` and after `fromSec`, on the filters' time line. */
+    const fades = (untilSec: number | null, fromSec: number | null) =>
+      [
+        ...(untilSec === null ? [] : [`afade=t=in:st=${untilSec.toFixed(6)}:d=0.005`]),
+        ...(fromSec === null ? [] : [`afade=t=out:st=${(fromSec - 0.005).toFixed(6)}:d=0.005`]),
+      ].join(',');
+
+    it('mutes the audio alone, encoding it and copying the video', () => {
+      const { args } = plan({
+        recipe: recipe({ audio: 'keep', silenceStart: seconds(1), silenceEnd: frames(15) }),
+      });
+      expect(args).toEqual([
+        ...['-i', '/videos/clip.mp4', '-map', '0:0', '-map', '0:1'],
+        ...['-map_metadata', '0', '-map_chapters', '0', '-dn', '-c:v', 'copy'],
+        ...['-c:a', 'aac', '-b:a:0', '192k', '-filter:a:0', fades(1, 2.5)],
+        ...['-write_tmcd', '0', '-f', 'mp4', '/videos/.clip.partial-1234abcd.mp4'],
+      ]);
+      // Whatever the precision: nothing is cut.
+      expect(
+        plan({
+          recipe: recipe({ audio: 'keep', precision: 'fast', silenceStart: seconds(1) }),
+        }).args,
+      ).toContain(fades(1, null));
+    });
+
+    it('counts from the first frame and to the end of the last, on the format time line', () => {
+      // Matroska encoded with AAC: the file starts at -0.021 s, the video at 0.021 s.
+      const { args } = plan({
+        probe: probeOf({ container: 'mkv', video: { startSec: 0.021 }, formatStartSec: -0.021 }),
+        recipe: recipe({ audio: 'keep', silenceStart: frames(3), silenceEnd: seconds(1) }),
+      });
+      expect(option(args, '-filter:a:0')).toBe(fades(0.042 + 0.1, 0.042 + 2));
+    });
+
+    it('counts from the first frame an exact cut keeps, the time line starting at the seek', () => {
+      const { args } = plan({
+        recipe: recipe({
+          audio: 'keep',
+          trimStart: frames(30),
+          trimEnd: frames(15),
+          silenceStart: frames(10),
+          silenceEnd: seconds(0.5),
+        }),
+      });
+      // Seeking 2 ms before frame 30, whose time is the start of the filters' time line.
+      expect(option(args, '-ss')).toBe('0.998000');
+      expect(option(args, '-filter:a:0')).toBe(fades(0.002 + 10 / 30, 0.002 + 1.5 - 0.5));
+      expect(option(args, '-c:v')).toBe('libx264');
+    });
+
+    it('counts from the keyframe a fast cut starts at, where the time line starts', () => {
+      const { args } = plan({
+        recipe: recipe({
+          audio: 'keep',
+          precision: 'fast',
+          trimStart: frames(20),
+          silenceStart: seconds(0.25),
+          silenceEnd: frames(30),
+        }),
+        keyframe: { ptsSec: 0.5, dtsSec: 0.5 - 2 / 30 },
+      });
+      expect(option(args, '-c:v')).toBe('copy');
+      expect(option(args, '-c:a')).toBe('aac');
+      expect(option(args, '-filter:a:0')).toBe(fades(0.25, 2.5 - 1));
+    });
+
+    it('mutes a new soundtrack, which starts at 0 on the time line, before padding it', () => {
+      const { args } = plan({
+        recipe: recipe({
+          audio: 'replace',
+          trackId: 'song',
+          trimStart: frames(30),
+          silenceEnd: seconds(1),
+        }),
+        track: TRACK,
+      });
+      expect(option(args, '-filter:a:0')).toBe(`${fades(null, 0.002 + 1)},apad`);
+    });
+
+    it('goes by the time line before the output seek in MPEG streams', () => {
+      // Audio first, at 1.443 s; the video 23 ms later.
+      const transport = probeOf({
+        container: 'ts',
+        video: { startSec: 1.466667 },
+        audio: [{ index: 1, codec: 'aac', channels: 2, layout: 'stereo', startSec: 1.443444 }],
+        formatStartSec: 1.443444,
+      });
+      const exact = plan({
+        probe: transport,
+        recipe: recipe({ audio: 'keep', trimStart: frames(10), silenceStart: frames(10) }),
+      });
+      expect(option(exact.args, '-filter:a:0')).toBe(fades(1.466667 + 20 / 30 - 1.443444, null));
+      const fast = plan({
+        probe: transport,
+        recipe: recipe({
+          audio: 'replace',
+          trackId: 'song',
+          precision: 'fast',
+          trimStart: frames(20),
+          silenceStart: seconds(0.5),
+        }),
+        track: TRACK,
+        keyframe: { ptsSec: 1.466667 + 0.5, dtsSec: 1.466667 + 13 / 30 },
+      });
+      // The source's audio is not used: the time line starts with the video. The soundtrack is
+      // shifted by the output seek, onto that time line too.
+      expect(option(fast.args, '-filter:a:0')).toBe(`${fades(0.5 + 0.5, null)},apad`);
+    });
+
+    it('silences frames at the times scanned', () => {
+      // 30 fps for 2 s, then 2 fps: the last 2 frames show from 3 s, frame 10 at 1/3 s.
+      const times = [...Array.from({ length: 60 }, (_, index) => index / 30), ...[2, 2.5, 3, 3.5]];
+      const { args } = plan({
+        probe: probeOf({ video: { durationSec: 4, frameRate: 16, frameCount: 64 } }),
+        recipe: recipe({ audio: 'keep', silenceStart: frames(10), silenceEnd: frames(2) }),
+        frameTimes: { times, complete: true },
+      });
+      expect(option(args, '-filter:a:0')).toBe(fades(10 / 30, 3));
+      // On the frame rate's grid without them.
+      const grid = plan({
+        probe: probeOf({ video: { durationSec: 4, frameRate: 16, frameCount: 64 } }),
+        recipe: recipe({ audio: 'keep', silenceStart: frames(10), silenceEnd: frames(2) }),
+      });
+      expect(option(grid.args, '-filter:a:0')).toBe(fades(10 / 16, 4 - 2 / 16));
+    });
+
+    it('refuses silences that leave no sound, in frames or seconds', () => {
+      expect(
+        planError({
+          recipe: recipe({ audio: 'keep', silenceStart: frames(45), silenceEnd: seconds(1.5) }),
+        }),
+      ).toBe('The silences cover all of it (0:03 long): remove the audio instead.');
+      expect(
+        planError({
+          recipe: recipe({ audio: 'keep', trimEnd: frames(30), silenceStart: seconds(2) }),
+        }),
+      ).toBe('The silences cover all of it (0:02 long once trimmed): remove the audio instead.');
+      // Half a frame of sound is enough.
+      expect(plan({ recipe: recipe({ audio: 'keep', silenceStart: frames(89) }) }).args).toContain(
+        fades(89 / 30, null),
+      );
+    });
+
+    it('needs the frame rate for silences in frames', () => {
+      expect(
+        planError({
+          probe: probeOf({ video: { frameRate: null } }),
+          recipe: recipe({ audio: 'keep', silenceEnd: frames(3) }),
+        }),
+      ).toBe('Its frame rate is unknown: silence it in seconds.');
+      expect(
+        plan({
+          probe: probeOf({ video: { frameRate: null } }),
+          recipe: recipe({ audio: 'keep', silenceEnd: seconds(1) }),
+        }).args,
+      ).toContain(fades(null, 2));
+    });
+
+    it('leaves out audio that ffmpeg cannot decode, even from MOV, which would keep it', () => {
+      const audio = [
+        { index: 1, codec: 'aac', channels: 2, layout: 'stereo', startSec: 0 },
+        { index: 2, codec: null, channels: 4, layout: null, startSec: 0 },
+      ] as const;
+      const { args, droppedAudio } = plan({
+        probe: probeOf({ container: 'mov', audio }),
+        recipe: recipe({ audio: 'keep', silenceEnd: seconds(1) }),
+      });
+      expect(options(args, '-map')).toEqual(['0:0', '0:1']);
+      expect(droppedAudio).toEqual([2]);
+      expect(
+        planError({
+          probe: probeOf({ container: 'mov', audio: [audio[1]] }),
+          recipe: recipe({ audio: 'keep', trimStart: frames(1), silenceEnd: seconds(1) }),
+        }),
+      ).toBe('Its audio cannot be decoded, so it cannot be silenced.');
+    });
+
+    it('does nothing for a removed audio', () => {
+      const { args } = plan({
+        recipe: recipe({ audio: 'remove', silenceStart: seconds(1), silenceEnd: seconds(5) }),
+      });
+      expect(args).toContain('-an');
+      expect(args.some((arg) => arg.includes('afade'))).toBe(false);
+    });
+  });
+
   it('maps the video stream by index, whatever comes before it', () => {
     const { args } = plan({
       probe: probeOf({
@@ -1076,6 +1277,22 @@ describe('framesToScan and keyframeLookup', () => {
     expect(
       framesToScan(recipe({ trimEnd: frames(3) }), probeOf({ video: { frameRate: null } })),
     ).toBeNull();
+  });
+
+  it('scans the frames that silences in frames last, and those before them', () => {
+    const keep = { audio: 'keep' } as const;
+    expect(framesToScan(recipe({ ...keep, silenceEnd: frames(3) }), probeOf())).toBe('all');
+    expect(framesToScan(recipe({ ...keep, silenceStart: frames(3) }), probeOf())).toBe(4);
+    expect(
+      framesToScan(recipe({ ...keep, trimStart: frames(5), silenceStart: frames(3) }), probeOf()),
+    ).toBe(9);
+    // A start trim in seconds does not tell which frame is the first one kept.
+    expect(
+      framesToScan(recipe({ ...keep, trimStart: seconds(1), silenceStart: frames(3) }), probeOf()),
+    ).toBe('all');
+    expect(framesToScan(recipe({ ...keep, silenceStart: seconds(3) }), probeOf())).toBeNull();
+    // Unused for a removed audio.
+    expect(framesToScan(recipe({ audio: 'remove', silenceEnd: frames(3) }), probeOf())).toBeNull();
   });
 
   it('looks for the keyframe before the time the first frame kept shows', () => {

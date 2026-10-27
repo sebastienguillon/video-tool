@@ -11,7 +11,8 @@ const LOAD_TIMEOUT_MS = 2_000;
 /** Typing in a trim field changes the recipe at every keystroke: saves wait for a pause. */
 const SAVE_DELAY_MS = 400;
 
-export type TrimField = 'trimStart' | 'trimEnd';
+/** A field of the recipe that holds a length typed by the user, to trim or to silence. */
+export type LengthKey = 'trimStart' | 'trimEnd' | 'silenceStart' | 'silenceEnd';
 
 /**
  * The treatments and the output location, persisted by the main process so that they survive a
@@ -23,15 +24,27 @@ export class SettingsStore {
   private readonly desktop = inject(DESKTOP);
   private readonly currentRecipe = signal<Recipe>(DEFAULT_SETTINGS.recipe);
   private readonly currentOutput = signal<OutputSettings>(DEFAULT_SETTINGS.output);
-  private readonly invalidTrims = signal<ReadonlySet<TrimField>>(new Set());
+  private readonly invalidLengths = signal<ReadonlySet<LengthKey>>(new Set());
   /** The recipe as the main process has it, last loaded or sent. */
   private savedRecipe = DEFAULT_SETTINGS.recipe;
   private saveTimer: ReturnType<typeof setTimeout> | undefined;
 
   readonly recipe = this.currentRecipe.asReadonly();
   readonly output = this.currentOutput.asReadonly();
-  /** A trim field holds text that is not a length: the recipe still has the last valid one. */
-  readonly trimInputInvalid = computed(() => this.invalidTrims().size > 0);
+  /**
+   * What a field that holds text that is not a length is for: the recipe still has the last valid
+   * one. Those of the silences do not count while the audio is removed, which leaves them unused.
+   */
+  readonly invalidLength = computed<'trim' | 'silence' | null>(() => {
+    const invalid = this.invalidLengths();
+    if (invalid.has('trimStart') || invalid.has('trimEnd')) {
+      return 'trim';
+    }
+    const silencing = this.currentRecipe().audio !== 'remove';
+    return silencing && (invalid.has('silenceStart') || invalid.has('silenceEnd'))
+      ? 'silence'
+      : null;
+  });
 
   constructor() {
     // A change made just before the window closes is not lost.
@@ -74,8 +87,8 @@ export class SettingsStore {
     }, SAVE_DELAY_MS);
   }
 
-  setTrimValidity(field: TrimField, valid: boolean): void {
-    const invalid = this.invalidTrims();
+  setLengthValidity(field: LengthKey, valid: boolean): void {
+    const invalid = this.invalidLengths();
     if (invalid.has(field) === !valid) {
       return;
     }
@@ -85,7 +98,7 @@ export class SettingsStore {
     } else {
       next.add(field);
     }
-    this.invalidTrims.set(next);
+    this.invalidLengths.set(next);
   }
 
   async setOutput(output: OutputSettings): Promise<void> {
@@ -159,6 +172,8 @@ function sameRecipe(a: Recipe, b: Recipe): boolean {
     a.loop === b.loop &&
     a.precision === b.precision &&
     sameTrim(a.trimStart, b.trimStart) &&
-    sameTrim(a.trimEnd, b.trimEnd)
+    sameTrim(a.trimEnd, b.trimEnd) &&
+    sameTrim(a.silenceStart, b.silenceStart) &&
+    sameTrim(a.silenceEnd, b.silenceEnd)
   );
 }

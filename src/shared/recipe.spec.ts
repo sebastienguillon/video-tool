@@ -8,6 +8,8 @@ import {
   outputLabels,
   recipeIssue,
   reencodesVideo,
+  silencedDuration,
+  silences,
   trimSeconds,
   trims,
   videoIssue,
@@ -49,15 +51,26 @@ describe('recipe helpers', () => {
     expect(trims(recipe({ trimEnd: seconds(0.5) }))).toBe(true);
   });
 
+  it('silences only an audio that is kept or replaced', () => {
+    expect(silences(recipe({ audio: 'keep' }))).toBe(false);
+    expect(silences(recipe({ audio: 'keep', silenceStart: seconds(1) }))).toBe(true);
+    expect(silences(recipe({ audio: 'replace', silenceEnd: frames(3) }))).toBe(true);
+    expect(silences(recipe({ audio: 'remove', silenceEnd: frames(3) }))).toBe(false);
+  });
+
   it('re-encodes the video only for exact cuts', () => {
     expect(reencodesVideo(recipe({ trimStart: seconds(1), precision: 'exact' }))).toBe(true);
     expect(reencodesVideo(recipe({ trimStart: seconds(1), precision: 'fast' }))).toBe(false);
     expect(reencodesVideo(recipe({ precision: 'exact' }))).toBe(false);
+    expect(
+      reencodesVideo(recipe({ audio: 'keep', precision: 'exact', silenceStart: seconds(1) })),
+    ).toBe(false);
   });
 
   it('knows a recipe that would only copy the file', () => {
     expect(changesNothing(recipe({ audio: 'keep' }))).toBe(true);
     expect(changesNothing(recipe({ audio: 'keep', trimEnd: frames(2) }))).toBe(false);
+    expect(changesNothing(recipe({ audio: 'keep', silenceEnd: frames(2) }))).toBe(false);
     expect(changesNothing(recipe({ audio: 'remove' }))).toBe(false);
   });
 
@@ -71,12 +84,22 @@ describe('recipe helpers', () => {
       outputDuration(recipe({ trimStart: frames(3) }), { ...INFO, frameRate: null }),
     ).toBeNull();
   });
+
+  it('adds up what the silences mute, when they apply', () => {
+    const both = { silenceStart: seconds(0.5), silenceEnd: frames(15) };
+    expect(silencedDuration(recipe({ audio: 'keep', ...both }), INFO)).toBe(1);
+    expect(silencedDuration(recipe({ audio: 'remove', ...both }), INFO)).toBe(0);
+    expect(
+      silencedDuration(recipe({ audio: 'keep', ...both }), { ...INFO, frameRate: null }),
+    ).toBeNull();
+  });
 });
 
 describe('recipeIssue', () => {
   it('accepts a recipe that does something', () => {
     expect(recipeIssue(recipe({ audio: 'remove' }), null)).toBeNull();
     expect(recipeIssue(recipe({ audio: 'keep', trimStart: frames(3) }), null)).toBeNull();
+    expect(recipeIssue(recipe({ audio: 'keep', silenceStart: seconds(1) }), null)).toBeNull();
     expect(recipeIssue(recipe({ audio: 'replace', trackId: 'track' }), TRACK)).toBeNull();
     expect(
       recipeIssue(recipe({ audio: 'replace', trackId: 'track' }), { ...TRACK, status: 'probing' }),
@@ -85,8 +108,25 @@ describe('recipeIssue', () => {
 
   it('refuses a recipe that would only copy the file', () => {
     expect(recipeIssue(recipe({ audio: 'keep' }), null)).toBe(
-      'Choose what to do: remove or replace the audio, or trim.',
+      'Choose what to do: remove or replace the audio, silence or trim.',
     );
+  });
+
+  it('refuses invalid lengths to silence, unless the audio is removed', () => {
+    expect(recipeIssue(recipe({ audio: 'keep', silenceStart: seconds(Number.NaN) }), null)).toBe(
+      'Enter valid lengths to silence.',
+    );
+    expect(recipeIssue(recipe({ audio: 'keep', silenceEnd: seconds(-1) }), null)).toBe(
+      'Lengths to silence cannot be negative.',
+    );
+    expect(
+      recipeIssue(recipe({ audio: 'replace', trackId: 'track', silenceEnd: frames(0.5) }), TRACK),
+    ).toBe('Frames to silence must be whole numbers.');
+    // Trims are checked first.
+    expect(
+      recipeIssue(recipe({ audio: 'keep', trimStart: frames(0.5), silenceEnd: seconds(-1) }), null),
+    ).toBe('Frames to trim must be whole numbers.');
+    expect(recipeIssue(recipe({ audio: 'remove', silenceEnd: seconds(-1) }), null)).toBeNull();
   });
 
   it('refuses invalid lengths, even when they are the only trim', () => {
@@ -143,6 +183,52 @@ describe('videoIssue', () => {
       videoIssue(recipe({ trimStart: frames(0), trimEnd: seconds(1) }), unknownRate),
     ).toBeNull();
   });
+
+  it('refuses silences in frames when the frame rate is unknown', () => {
+    const unknownRate = { ...INFO, frameRate: null };
+    expect(videoIssue(recipe({ audio: 'keep', silenceEnd: frames(3) }), unknownRate)).toBe(
+      'Its frame rate is unknown: silence it in seconds.',
+    );
+    expect(videoIssue(recipe({ audio: 'keep', silenceEnd: seconds(1) }), unknownRate)).toBeNull();
+    expect(videoIssue(recipe({ audio: 'remove', silenceEnd: frames(3) }), unknownRate)).toBeNull();
+  });
+
+  it('accepts silences that leave some sound, and refuses those that do not', () => {
+    const keep = { audio: 'keep' } as const;
+    expect(
+      videoIssue(recipe({ ...keep, silenceStart: seconds(1), silenceEnd: frames(59) }), INFO),
+    ).toBeNull();
+    expect(
+      videoIssue(recipe({ ...keep, silenceStart: seconds(1), silenceEnd: frames(60) }), INFO),
+    ).toBe('The silences cover all of it (0:03 long): remove the audio instead.');
+    expect(
+      videoIssue(
+        recipe({
+          ...keep,
+          trimStart: seconds(1),
+          silenceStart: seconds(0.5),
+          silenceEnd: seconds(2),
+        }),
+        INFO,
+      ),
+    ).toBe('The silences cover all of it (0:02 long once trimmed): remove the audio instead.');
+    // A removed audio has no silences.
+    expect(videoIssue(recipe({ audio: 'remove', silenceStart: seconds(5) }), INFO)).toBeNull();
+  });
+
+  it('has nothing to silence in a video without audio, which may still be trimmed', () => {
+    const silent = { ...INFO, audioCodec: null };
+    expect(videoIssue(recipe({ audio: 'keep', silenceStart: seconds(1) }), silent)).toBe(
+      'It has no audio to silence.',
+    );
+    expect(
+      videoIssue(recipe({ audio: 'keep', trimEnd: frames(1), silenceStart: seconds(9) }), silent),
+    ).toBeNull();
+    // A new soundtrack can be silenced.
+    expect(
+      videoIssue(recipe({ audio: 'replace', trackId: 'track', silenceStart: seconds(1) }), silent),
+    ).toBeNull();
+  });
 });
 
 describe('outputLabels', () => {
@@ -162,6 +248,21 @@ describe('outputLabels', () => {
       'new audio',
       'trimmed',
     ]);
+  });
+
+  it('says the audio was muted, last, only when it is kept or replaced', () => {
+    const labels = (patch: Partial<typeof DEFAULT_RECIPE>) =>
+      outputLabels(
+        { ...DEFAULT_RECIPE, silenceEnd: { amount: 1, unit: 'seconds' }, ...patch },
+        null,
+      );
+    expect(labels({ audio: 'keep' })).toEqual(['muted']);
+    expect(labels({ audio: 'keep', trimStart: { amount: 2, unit: 'frames' } })).toEqual([
+      'trimmed',
+      'muted',
+    ]);
+    expect(labels({ audio: 'replace' })).toEqual(['new audio', 'muted']);
+    expect(labels({ audio: 'remove' })).toEqual(['no audio']);
   });
 
   it('names a replaced audio by the suffix of its soundtrack', () => {

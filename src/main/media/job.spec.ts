@@ -12,6 +12,7 @@ import { CanceledError } from './runner';
 import {
   audibleStart,
   countDecodedFrames,
+  decodedSpan,
   disguiseAudioTrack,
   ffmpeg,
   ffmpegMissing,
@@ -23,6 +24,7 @@ import {
   packetSpan,
   rampSource,
   requireTools,
+  silentSpans,
   streamsOf,
   toneSource,
   videoPacketHashes,
@@ -615,6 +617,215 @@ describe.skipIf(ffmpegMissing)('processVideo', () => {
         audioFrame,
       );
       expect(video.endSec - video.startSec).toBeCloseTo(2, 2);
+    });
+  });
+
+  describe('silencing', () => {
+    /**
+     * How far from where it is asked the sound may stop or start: lossy encoders spread an onset by
+     * a millisecond or two, and AVI rounds the video's timestamps to its frames.
+     */
+    const TOLERANCE = 0.005;
+
+    /**
+     * Checks that the first audio stream of `output` is silent from its start until `untilSec` after
+     * the first frame, heard from there until `fromSec`, and silent from there to its end; `null`
+     * when not silenced there. Times count from the first frame as decoded.
+     */
+    async function expectSilences(output: string, untilSec: number | null, fromSec: number | null) {
+      const first = (await decodedSpan(output, 'v')).startSec;
+      const audio = await decodedSpan(output, 'a');
+      const spans = await silentSpans(output);
+      const heardFrom = Math.max(first + (untilSec ?? 0), audio.startSec) + TOLERANCE;
+      const heardUntil = (fromSec === null ? audio.endSec : first + fromSec) - TOLERANCE;
+      // Heard throughout, in between.
+      expect(
+        spans.filter((span) => span.endSec > heardFrom && span.startSec < heardUntil),
+        `silent between ${heardFrom.toFixed(3)} and ${heardUntil.toFixed(3)}`,
+      ).toEqual([]);
+      if (untilSec !== null) {
+        // From the start of the audio, which may come before the first frame or a little after.
+        const start = spans[0];
+        expect(start?.startSec).toBeLessThanOrEqual(audio.startSec + 0.001);
+        expect(start?.endSec).toBeGreaterThanOrEqual(first + untilSec - TOLERANCE);
+      }
+      if (fromSec !== null) {
+        const end = spans.at(-1);
+        expect(end?.startSec).toBeLessThanOrEqual(first + fromSec + TOLERANCE);
+        expect(end?.endSec).toBeGreaterThanOrEqual(audio.endSec - 0.001);
+      }
+    }
+
+    it.each([
+      ['ramp.mp4', 'mp4'],
+      ['delayed.mp4', 'mp4'],
+      ['early.mkv', 'mkv'],
+      ['remuxed.mkv', 'mkv'],
+      ['ntsc.mp4', 'mp4'],
+      ['ramp.webm', 'webm'],
+      ['transport.ts', 'mp4'],
+      ['program.mpg', 'mp4'],
+      ['bframes.avi', 'mp4'],
+      ['ramp.flv', 'mp4'],
+    ])(
+      'silences the start and the end of what an exact cut keeps from %s',
+      async (name, extension) => {
+        const output = await run(file(name), {
+          audio: 'keep',
+          precision: 'exact',
+          trimStart: frames(20),
+          trimEnd: frames(5),
+          silenceStart: frames(10),
+          silenceEnd: frames(15),
+        });
+        // ramp.flv makes ramp (…).mp4 too: numbered.
+        expect(path.basename(output)).toMatch(
+          new RegExp(`^${path.parse(name).name} \\(trimmed, muted\\)( \\d+)?\\.${extension}$`),
+        );
+        await expectFrames(output, 20, 84);
+        const fps = name === 'ntsc.mp4' ? 30000 / 1001 : 30;
+        await expectSilences(output, 10 / fps, (65 - 15) / fps);
+      },
+    );
+
+    it.each([
+      'ramp.mp4',
+      'remuxed.mkv',
+      'early.mkv',
+      'ramp.webm',
+      'bframes.avi',
+      'ramp.flv',
+      'transport.ts',
+      'dvd.mpg',
+    ])('counts the silences from the keyframe a fast cut of %s starts at', async (name) => {
+      const output = await run(file(name), {
+        audio: 'keep',
+        precision: 'fast',
+        trimStart: frames(35),
+        silenceStart: frames(10),
+        silenceEnd: seconds(0.5),
+      });
+      // Keyframes every 15 frames: frame 30 for a cut at frame 35.
+      await expectFrames(output, 30, 89);
+      await expectSilences(output, 10 / 30, 60 / 30 - 0.5);
+    });
+
+    it.each(['ramp.mp4', 'early.mkv', 'ramp.webm', 'transport.ts', 'bframes.avi'])(
+      'silences a new soundtrack of %s, cut exactly or fast',
+      async (name) => {
+        const exact = await run(
+          file(name),
+          {
+            audio: 'replace',
+            trackId: 'tone',
+            precision: 'exact',
+            trimStart: frames(20),
+            silenceStart: seconds(0.25),
+            silenceEnd: frames(30),
+          },
+          { track: file('tone5.mp3') },
+        );
+        expect(path.basename(exact)).toMatch(/^.* \(tone5, trimmed, muted\)\.\w+$/);
+        await expectFrames(exact, 20, 89);
+        await expectSilences(exact, 0.25, (70 - 30) / 30);
+        const fast = await run(
+          file(name),
+          {
+            audio: 'replace',
+            trackId: 'tone',
+            precision: 'fast',
+            trimStart: frames(35),
+            silenceEnd: seconds(1),
+          },
+          { track: file('tone5.mp3') },
+        );
+        await expectFrames(fast, 30, 89);
+        await expectSilences(fast, null, 2 - 1);
+      },
+    );
+
+    it('silences the audio alone without touching the video packets', async () => {
+      for (const precision of ['exact', 'fast'] as const) {
+        const output = await run(file('ramp.mp4'), {
+          audio: 'keep',
+          precision,
+          silenceStart: seconds(1),
+          silenceEnd: seconds(1),
+        });
+        expect(path.basename(output)).toMatch(/^ramp \(muted\)( 2)?\.mp4$/);
+        expect(await videoPacketHashes(output)).toEqual(await videoPacketHashes(file('ramp.mp4')));
+        await expectSilences(output, 1, 2);
+      }
+    });
+
+    it('silences frames at the times they show on a variable frame rate', async () => {
+      // 30 fps for 2 s, then 2 fps: the last 2 frames show from 3 s, the 2 after 2 s from 2.5 s.
+      // On the average rate's grid (16 fps), 2 frames would last 0.125 s.
+      const output = await run(file('vfr.mp4'), {
+        audio: 'keep',
+        silenceStart: frames(10),
+        silenceEnd: frames(2),
+      });
+      await expectSilences(output, 10 / 30, 3);
+      // A second rounds up to a frame of the average rate (18.1 fps), at 1.05 s: the first frame
+      // kept is frame 32, at 1.07 s. 30 frames after it, frame 62 shows at 3 s.
+      const trimmed = await run(file('vfr.mp4'), {
+        audio: 'keep',
+        precision: 'exact',
+        trimStart: seconds(1),
+        silenceStart: frames(30),
+      });
+      await expectFrames(trimmed, 32, 63);
+      await expectSilences(trimmed, 3 - 32 / 30, null);
+    });
+
+    it('leaves out the audio that ffmpeg cannot decode, which cannot be silenced', async () => {
+      const output = await run(file('spatial.mov'), {
+        audio: 'keep',
+        precision: 'exact',
+        trimStart: frames(10),
+        silenceEnd: seconds(1),
+      });
+      expect(path.basename(output)).toBe('spatial (trimmed, muted).mov');
+      const json = (await ffprobeJson(['-show_streams', '-select_streams', 'a', output])) as {
+        streams: { codec_tag_string: string }[];
+      };
+      expect(json.streams.map((stream) => stream.codec_tag_string)).toEqual(['mp4a']);
+      await expectSilences(output, null, 80 / 30 - 1);
+    });
+
+    it('has nothing to silence in a video without audio', async () => {
+      const trimmed = await run(file('camera.avi'), {
+        audio: 'keep',
+        precision: 'exact',
+        trimStart: frames(5),
+        silenceStart: seconds(0.5),
+      });
+      expect(path.basename(trimmed)).toBe('camera (trimmed).mp4');
+      await expect(
+        run(file('camera.avi'), { audio: 'keep', silenceStart: seconds(0.5) }),
+      ).rejects.toThrow(new JobError('It has no audio to silence.'));
+    });
+
+    it('refuses silences that leave no sound', async () => {
+      await expect(
+        run(file('ramp.mp4'), {
+          audio: 'keep',
+          silenceStart: seconds(2),
+          silenceEnd: frames(30),
+        }),
+      ).rejects.toThrow('The silences cover all of it (0:03 long): remove the audio instead.');
+      await expect(
+        run(file('ramp.mp4'), {
+          audio: 'keep',
+          precision: 'exact',
+          trimEnd: frames(30),
+          silenceStart: seconds(1),
+          silenceEnd: seconds(1),
+        }),
+      ).rejects.toThrow(
+        'The silences cover all of it (0:02 long once trimmed): remove the audio instead.',
+      );
     });
   });
 

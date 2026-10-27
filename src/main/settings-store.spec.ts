@@ -50,6 +50,8 @@ const RECIPE: Recipe = {
   loop: false,
   trimStart: { amount: 1.5, unit: 'seconds' },
   trimEnd: { amount: 12, unit: 'frames' },
+  silenceStart: { amount: 0.5, unit: 'seconds' },
+  silenceEnd: { amount: 6, unit: 'frames' },
   precision: 'fast',
 };
 
@@ -85,6 +87,25 @@ describe('sanitizeRecipe', () => {
     });
     expect(sanitizeRecipe(null)).toEqual(DEFAULT_RECIPE);
     expect(sanitizeRecipe([RECIPE])).toEqual(DEFAULT_RECIPE);
+  });
+
+  it('silences nothing in the settings of earlier versions, or when the lengths are not valid', () => {
+    const { silenceStart: _start, silenceEnd: _end, ...earlier } = RECIPE;
+    expect(sanitizeRecipe(earlier)).toEqual({
+      ...RECIPE,
+      silenceStart: DEFAULT_RECIPE.silenceStart,
+      silenceEnd: DEFAULT_RECIPE.silenceEnd,
+    });
+    expect(
+      sanitizeRecipe({
+        ...RECIPE,
+        silenceStart: { amount: Number.POSITIVE_INFINITY, unit: 'seconds' },
+        silenceEnd: { amount: 1.5, unit: 'frames' },
+      }),
+    ).toMatchObject({
+      silenceStart: { amount: 0, unit: 'seconds' },
+      silenceEnd: { amount: 0, unit: 'frames' },
+    });
   });
 });
 

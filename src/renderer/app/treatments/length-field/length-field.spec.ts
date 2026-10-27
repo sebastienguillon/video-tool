@@ -48,6 +48,10 @@ describe('LengthField', () => {
     expect(select().getAttribute('aria-label')).toBe('Remove from the start: unit');
   });
 
+  it('says it is valid once created: a field shown again starts with its value', () => {
+    expect(validity).toEqual([true]);
+  });
+
   it('changes the value as soon as the text reads as a length, and writes it back on leaving', async () => {
     await type('1:5');
     expect(value()).toEqual({ amount: 65, unit: 'seconds' });
@@ -79,7 +83,7 @@ describe('LengthField', () => {
     await type('3');
     expect(input().getAttribute('aria-invalid')).toBe('false');
     expect(value().amount).toBe(3);
-    expect(validity).toEqual([false, true]);
+    expect(validity).toEqual([true, false, true]);
   });
 
   it('takes whole numbers of frames', async () => {
@@ -132,7 +136,7 @@ describe('LengthField', () => {
     await type('abc');
     await switchTo('frames');
     expect(input().getAttribute('aria-invalid')).toBe('false');
-    expect(validity).toEqual([false, true]);
+    expect(validity).toEqual([true, false, true]);
   });
 
   it('shows a value set from outside, as when the settings load', async () => {

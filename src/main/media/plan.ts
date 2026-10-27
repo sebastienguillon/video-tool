@@ -10,7 +10,7 @@
  * constant: frame k is at `startSec + k / frameRate`.
  */
 import type { Recipe, Trim } from '@shared/model';
-import { isTrimSet, reencodesVideo, trims } from '@shared/recipe';
+import { coveredBySilences, isTrimSet, reencodesVideo, silences, trims } from '@shared/recipe';
 import { formatDuration } from '@shared/time';
 import type { MediaFeatures } from './media-tools';
 import { fpsModeArgs } from './media-tools';
@@ -349,19 +349,29 @@ function endFrame(
 /**
  * The frames whose times planning needs, read from the packets (see `scanFrames`): every one for an
  * end trim in frames, which counts them too (containers may not record how many, or count frames
- * that never show); the first ones for a start trim in frames. `null` when no trim is in frames.
+ * that never show), and for an end silenced in frames; the first ones for a start trim or silence
+ * in frames. `null` when no trim or silence is in frames.
  */
 export function framesToScan(recipe: Recipe, probe: MediaProbe): number | 'all' | null {
   if (probe.video.frameRate === null) {
-    // Trims in frames are refused.
+    // Trims and silences in frames are refused.
     return null;
   }
-  if (isTrimSet(recipe.trimEnd) && recipe.trimEnd.unit === 'frames') {
+  const inFrames = (length: Trim) => isTrimSet(length) && length.unit === 'frames';
+  const silencing = silences(recipe);
+  if (inFrames(recipe.trimEnd) || (silencing && inFrames(recipe.silenceEnd))) {
     return 'all';
   }
-  return isTrimSet(recipe.trimStart) && recipe.trimStart.unit === 'frames'
-    ? recipe.trimStart.amount + 1
-    : null;
+  const start = inFrames(recipe.trimStart) ? recipe.trimStart.amount : 0;
+  if (silencing && inFrames(recipe.silenceStart)) {
+    // To the last frame silenced, from the first frame kept, whose index a start trim in seconds
+    // does not tell: on a variable frame rate, it is not on the grid of the average one. A fast cut
+    // starts earlier, at a keyframe.
+    return isTrimSet(recipe.trimStart) && !inFrames(recipe.trimStart)
+      ? 'all'
+      : start + recipe.silenceStart.amount + 1;
+  }
+  return inFrames(recipe.trimStart) ? start + 1 : null;
 }
 
 /**
@@ -404,6 +414,15 @@ interface Timing {
   readonly durationSec: number;
   /** A stream copy starts at a keyframe before the cut: shift all streams so that it shows at 0. */
   readonly zeroTimestamps: boolean;
+  /**
+   * The source timestamp at 0 on the time line the audio filters go by, ffmpeg's own before an
+   * output seek: after the input seek and offset, from the format start. A new soundtrack starts
+   * at 0 there too.
+   */
+  readonly timelineSec: number;
+  /** Source timestamps of the first frame of the result, and of the end of its last one. */
+  readonly firstFrameSec: number;
+  readonly endSec: number;
 }
 
 interface TimingOptions {
@@ -445,6 +464,9 @@ function timingOf(range: KeptRange, probe: MediaProbe, options: TimingOptions): 
     frames,
     durationSec: end - options.originSec,
     zeroTimestamps: false,
+    timelineSec: options.originSec,
+    firstFrameSec: video.startSec,
+    endSec: end,
   };
   if (range.fromSec === null) {
     return unseeked;
@@ -454,14 +476,18 @@ function timingOf(range: KeptRange, probe: MediaProbe, options: TimingOptions): 
     // Just before the first frame kept: frames before the seek point are decoded, then dropped.
     // The length counts from the seek point, so it ends a margin before `end` too.
     const seekAt = range.fromSec - margin;
+    const seekSec = options.bisected ? null : Math.max(0, seekAt - formatStartSec);
     return {
-      seekSec: options.bisected ? null : Math.max(0, seekAt - formatStartSec),
+      seekSec,
       inputOffsetSec: null,
       outputSeekSec: options.bisected ? seekAt - options.originSec : null,
       lengthSec: lengthFrom(range.fromSec),
       frames,
       durationSec: end - range.fromSec,
       zeroTimestamps: false,
+      timelineSec: seekSec === null ? options.originSec : formatStartSec + seekSec,
+      firstFrameSec: range.fromSec,
+      endSec: end,
     };
   }
   // A stream copy starts at the keyframe before the cut.
@@ -480,6 +506,9 @@ function timingOf(range: KeptRange, probe: MediaProbe, options: TimingOptions): 
       frames: null,
       durationSec: end - start,
       zeroTimestamps: true,
+      timelineSec: options.originSec,
+      firstFrameSec: start,
+      endSec: end,
     };
   }
   // Just after the keyframe, so that the demuxer lands on it and not on the one before, ffmpeg's
@@ -496,6 +525,93 @@ function timingOf(range: KeptRange, probe: MediaProbe, options: TimingOptions): 
     frames: null,
     durationSec: end - start,
     zeroTimestamps: true,
+    timelineSec: keyframe === null ? seekPoint : keyframe.ptsSec,
+    firstFrameSec: start,
+    endSec: end,
+  };
+}
+
+/**
+ * Ramps between silence and sound, against the click of a cut in the waveform. Taken on the side
+ * of the sound: the lengths silenced are silent through.
+ */
+export const SILENCE_RAMP_SEC = 0.005;
+
+/** Where the audio is muted, on the time line of the audio filters (see `Timing.timelineSec`). */
+interface Silences {
+  /** Muted before this time; `null`: not at the start. */
+  readonly untilSec: number | null;
+  /** Muted from this time on; `null`: not at the end. */
+  readonly fromSec: number | null;
+}
+
+/**
+ * When the frame `count` frames after the one that shows at `atSec` shows, or before it for a
+ * negative count: at its time as scanned, else on the frame rate's grid. Without a frame rate,
+ * lengths in frames are refused beforehand.
+ */
+function framesAway(
+  atSec: number,
+  count: number,
+  frameRate: number,
+  frameTimes: FrameTimes | null,
+): number {
+  const times = frameTimes?.times ?? [];
+  // The index of the frame at `atSec`; at the end of the result, past its last frame, the index of
+  // the first one removed, or the number of frames.
+  const index = times.filter((time) => time < atSec - cutMargin(frameRate)).length;
+  return times[index + count] ?? atSec + count / frameRate;
+}
+
+/** The time `length` takes from `atSec` on, or back from it for `direction` -1. */
+function timeAfter(
+  atSec: number,
+  length: Trim,
+  direction: 1 | -1,
+  video: VideoStream,
+  frameTimes: FrameTimes | null,
+): number {
+  return length.unit === 'seconds' || video.frameRate === null
+    ? atSec + direction * length.amount
+    : framesAway(atSec, direction * length.amount, video.frameRate, frameTimes);
+}
+
+/** Where `recipe` mutes the audio of the result timed by `timing`, or why it cannot. */
+function silencesOf(
+  recipe: Recipe,
+  timing: Timing,
+  video: VideoStream,
+  frameTimes: FrameTimes | null,
+):
+  | { readonly ok: true; readonly silences: Silences }
+  | { readonly ok: false; readonly message: string } {
+  const { firstFrameSec, endSec, timelineSec } = timing;
+  if (
+    video.frameRate === null &&
+    [recipe.silenceStart, recipe.silenceEnd].some(
+      (length) => length.unit === 'frames' && isTrimSet(length),
+    )
+  ) {
+    return { ok: false, message: 'Its frame rate is unknown: silence it in seconds.' };
+  }
+  const until = isTrimSet(recipe.silenceStart)
+    ? timeAfter(firstFrameSec, recipe.silenceStart, 1, video, frameTimes)
+    : null;
+  const from = isTrimSet(recipe.silenceEnd)
+    ? timeAfter(endSec, recipe.silenceEnd, -1, video, frameTimes)
+    : null;
+  // Half a frame of sound at least, as for what the trims leave.
+  const audible =
+    Math.min(endSec, from ?? endSec) - Math.max(firstFrameSec, until ?? firstFrameSec);
+  if (audible < (video.frameRate === null ? 0.001 : 0.5 / video.frameRate)) {
+    return { ok: false, message: coveredBySilences(endSec - firstFrameSec, trims(recipe)) };
+  }
+  return {
+    ok: true,
+    silences: {
+      untilSec: until === null ? null : until - timelineSec,
+      fromSec: from === null ? null : from - timelineSec,
+    },
   };
 }
 
@@ -542,6 +658,18 @@ export interface Plan {
 export type PlanResult =
   { readonly ok: true; readonly plan: Plan } | { readonly ok: false; readonly message: string };
 
+const NO_LENGTH: Trim = { amount: 0, unit: 'seconds' };
+
+/**
+ * The recipe as it applies to a video: without audio, a video has nothing to silence. Its result is
+ * named after what is done to it.
+ */
+export function appliedRecipe(recipe: Recipe, probe: MediaProbe): Recipe {
+  return recipe.audio === 'keep' && probe.audio.length === 0 && silences(recipe)
+    ? { ...recipe, silenceStart: NO_LENGTH, silenceEnd: NO_LENGTH }
+    : recipe;
+}
+
 /** The ffmpeg arguments that apply `recipe` to one video, or why it cannot. */
 export function planJob(input: PlanInput): PlanResult {
   const { probe, recipe } = input;
@@ -557,8 +685,15 @@ export function planJob(input: PlanInput): PlanResult {
   if (recipe.audio === 'replace' && replace === null) {
     return { ok: false, message: 'Choose the replacement audio.' };
   }
+  const silencing = silences(recipe);
   const kept = recipe.audio === 'keep' ? probe.audio : [];
-  const carried = kept.filter((stream) => stream.codec !== null || carriesUndecodable(container));
+  // Audio that ffmpeg cannot decode can only be copied as it is: never silenced.
+  const carried = kept.filter(
+    (stream) => stream.codec !== null || (!silencing && carriesUndecodable(container)),
+  );
+  if (silencing && kept.length > 0 && carried.length === 0) {
+    return { ok: false, message: 'Its audio cannot be decoded, so it cannot be silenced.' };
+  }
   const bisected = BISECTED_CONTAINERS.includes(probe.info.container);
   const timing = timingOf(ranged.range, probe, {
     exact,
@@ -580,6 +715,11 @@ export function planJob(input: PlanInput): PlanResult {
         : 0,
   });
 
+  const silenced = silencing ? silencesOf(recipe, timing, probe.video, input.frameTimes) : null;
+  if (silenced?.ok === false) {
+    return silenced;
+  }
+
   const video = exact
     ? videoEncoderArgs(probe, container, input.encoders, input.features)
     : ({ ok: true, args: copyVideoArgs(probe) } as const);
@@ -591,9 +731,10 @@ export function planJob(input: PlanInput): PlanResult {
       ? ({ ok: true, args: ['-an'] } as const)
       : audioArgs(
           replace === null ? carried.map(audioOutput) : [{ ...replace, undecodable: false }],
-          exact || replace !== null,
+          exact || replace !== null || silencing,
           // Looped too: the soundtrack starts over a whole number of times (see `loopsToLast`).
           replace !== null,
+          silenced?.silences ?? null,
           container,
           input.encoders,
         );
@@ -797,12 +938,14 @@ function audioOutput(stream: AudioStream): AudioOutput {
 
 /**
  * `streams`: the audio streams of the output. Copied when nothing forces encoding; encoded
- * otherwise, in AAC (Opus for WebM), padded with silence to the end when `pad`.
+ * otherwise, in AAC (Opus for WebM), muted where `muted` says, and padded with silence to the end
+ * when `pad`.
  */
 function audioArgs(
   streams: readonly AudioOutput[],
   encode: boolean,
   pad: boolean,
+  muted: Silences | null,
   container: OutputContainer,
   encoders: ReadonlySet<string>,
 ): ArgsResult {
@@ -833,6 +976,7 @@ function audioArgs(
       // stream as decoded first: ffmpeg 5.1 to 6.1 would expect the new layout from the decoder,
       // and fail on its first frame.
       ...(accepted ? [] : [`aresample,aformat=channel_layouts=${standard}`]),
+      ...silenceFilters(muted),
       ...(pad ? ['apad'] : []),
     ];
     if (filters.length > 0) {
@@ -840,6 +984,23 @@ function audioArgs(
     }
   });
   return { ok: true, args };
+}
+
+/**
+ * Mutes the audio before and after the times of `muted`: fading it in and out, sample by sample,
+ * over `SILENCE_RAMP_SEC` of the sound, which is silent beyond the fades.
+ */
+function silenceFilters(muted: Silences | null): string[] {
+  const filters: string[] = [];
+  const untilSec = muted?.untilSec ?? null;
+  const fromSec = muted?.fromSec ?? null;
+  if (untilSec !== null) {
+    filters.push(`afade=t=in:st=${seconds(untilSec)}:d=${SILENCE_RAMP_SEC}`);
+  }
+  if (fromSec !== null) {
+    filters.push(`afade=t=out:st=${seconds(fromSec - SILENCE_RAMP_SEC)}:d=${SILENCE_RAMP_SEC}`);
+  }
+  return filters;
 }
 
 /** A timestamp for the command line, in seconds. */

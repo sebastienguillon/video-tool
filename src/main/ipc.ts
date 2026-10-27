@@ -348,7 +348,8 @@ export function parseClearScope(value: unknown): ClearScope {
  * is for `recipeIssue` to explain, in words meant for them.
  */
 export function parseRecipe(value: unknown): Recipe {
-  const { audio, trackId, loop, trimStart, trimEnd, precision } = fieldsOf(value, 'recipe');
+  const { audio, trackId, loop, trimStart, trimEnd, silenceStart, silenceEnd, precision } =
+    fieldsOf(value, 'recipe');
   if (
     !isAudioMode(audio) ||
     !(trackId === null || isId(trackId)) ||
@@ -363,6 +364,8 @@ export function parseRecipe(value: unknown): Recipe {
     loop,
     trimStart: parseTrim(trimStart),
     trimEnd: parseTrim(trimEnd),
+    silenceStart: parseTrim(silenceStart),
+    silenceEnd: parseTrim(silenceEnd),
     precision,
   };
 }

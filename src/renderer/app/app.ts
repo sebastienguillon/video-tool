@@ -7,6 +7,7 @@ import { Toolbar } from './toolbar/toolbar';
 import { AudioSection } from './treatments/audio-section/audio-section';
 import { OutputSection } from './treatments/output-section/output-section';
 import { ProcessBar } from './treatments/process-bar/process-bar';
+import { SilenceSection } from './treatments/silence-section/silence-section';
 import { TrimSection } from './treatments/trim-section/trim-section';
 import { Icon } from './ui/icon/icon';
 import { IconSprite } from './ui/icon/icon-sprite';
@@ -21,6 +22,7 @@ import { Workspace } from './workspace/workspace';
     Toolbar,
     Workspace,
     AudioSection,
+    SilenceSection,
     TrimSection,
     OutputSection,
     ProcessBar,

@@ -12,7 +12,9 @@
   gap: 6px;
 }
 
+/* Whatever room the select leaves, with no size of its own: a scroll bar can take room from it. */
 .input {
   flex: 1;
+  width: 0;
   font-variant-numeric: tabular-nums;
 }

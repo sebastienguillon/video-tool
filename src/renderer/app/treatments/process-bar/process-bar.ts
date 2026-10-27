@@ -56,8 +56,9 @@ export class ProcessBar {
     if (this.environment.outdatedVersion() !== null) {
       return 'Update ffmpeg to process videos.';
     }
-    if (this.settings.trimInputInvalid()) {
-      return 'Enter a valid length to trim.';
+    const invalid = this.settings.invalidLength();
+    if (invalid !== null) {
+      return `Enter a valid length to ${invalid}.`;
     }
     const issue = recipeIssue(this.settings.recipe(), this.tracks.selected());
     if (issue !== null) {

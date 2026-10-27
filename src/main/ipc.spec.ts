@@ -43,6 +43,8 @@ const RECIPE: Recipe = {
   loop: true,
   trimStart: { amount: 2.5, unit: 'seconds' },
   trimEnd: { amount: 12, unit: 'frames' },
+  silenceStart: { amount: 0, unit: 'seconds' },
+  silenceEnd: { amount: 6, unit: 'frames' },
   precision: 'exact',
 };
 
@@ -160,6 +162,8 @@ describe('parseRecipe', () => {
       { ...RECIPE, trimStart: { amount: '2', unit: 'seconds' } },
       { ...RECIPE, trimEnd: { amount: 2, unit: 'minutes' } },
       { ...RECIPE, trimEnd: undefined },
+      { ...RECIPE, silenceStart: undefined },
+      { ...RECIPE, silenceEnd: { amount: 1, unit: 'beats' } },
     ]) {
       expect(() => parseRecipe(recipe)).toThrow(/^Invalid (recipe|trim)\.$/);
     }

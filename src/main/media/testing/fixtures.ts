@@ -280,3 +280,57 @@ export async function videoPacketHashes(file: string): Promise<string[]> {
     .filter((line) => line !== '' && !line.startsWith('#'))
     .map((line) => line.split(',').at(-1)?.trim() ?? '');
 }
+
+/**
+ * From the first frame of the first video or audio stream, as decoded, to the end of its last one,
+ * on the file's time line: what is shown or heard, decoders' skipped samples left out.
+ */
+export async function decodedSpan(file: string, stream: 'v' | 'a'): Promise<Span> {
+  const json = (await ffprobeJson([
+    ...['-select_streams', `${stream}:0`],
+    // `pkt_duration_time` before ffmpeg 5.0.
+    ...['-show_entries', 'frame=best_effort_timestamp_time,duration_time,pkt_duration_time', file],
+  ])) as {
+    frames?: {
+      best_effort_timestamp_time?: string;
+      duration_time?: string;
+      pkt_duration_time?: string;
+    }[];
+  };
+  const frames = (json.frames ?? []).flatMap((frame) => {
+    const time = Number(frame.best_effort_timestamp_time);
+    const duration = Number(frame.duration_time ?? frame.pkt_duration_time);
+    return Number.isFinite(time)
+      ? [{ time, end: time + (Number.isFinite(duration) ? duration : 0) }]
+      : [];
+  });
+  if (frames.length === 0) {
+    throw new Error(`No decoded frames in stream ${stream} of ${file}`);
+  }
+  return {
+    startSec: Math.min(...frames.map(({ time }) => time)),
+    endSec: Math.max(...frames.map(({ end }) => end)),
+  };
+}
+
+/**
+ * Where the first audio stream is silent, on the file's time line: from where its sound stops, or
+ * where the stream starts, to where it is heard again, or where the stream ends. For a sound that
+ * never stops by itself, like a tone.
+ */
+export async function silentSpans(file: string): Promise<Span[]> {
+  const stderr = await ffmpeg([
+    ...['-copyts', '-i', file, '-map', '0:a:0'],
+    ...['-af', 'silencedetect=noise=-50dB:duration=0.001', '-f', 'null', '-'],
+  ]);
+  const spans: Span[] = [];
+  for (const match of stderr.matchAll(/silence_(start|end): (-?[\d.]+)/g)) {
+    const time = Number(match[2]);
+    if (match[1] === 'start') {
+      spans.push({ startSec: time, endSec: Number.POSITIVE_INFINITY });
+    } else if (spans.length > 0 && spans.at(-1)?.endSec === Number.POSITIVE_INFINITY) {
+      spans[spans.length - 1] = { startSec: spans.at(-1)?.startSec ?? time, endSec: time };
+    }
+  }
+  return spans;
+}

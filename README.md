@@ -11,7 +11,8 @@ them to every video with ffmpeg, one video at a time, and writes the results as 
   Pilot, Finder or Nautilus; or choose them in a dialog. Files that are not videos are left out, and
   a video already in the list is not added twice (see [Adding videos](#adding-videos)).
 - Treatments combine freely and run in a single ffmpeg pass per video: remove the audio, replace it
-  with a soundtrack from the audio list, trim the start and the end.
+  with a soundtrack from the audio list, silence it at the start and the end, trim the start and
+  the end.
 - The audio list keeps the soundtracks you use from one session to the next, and plays them for a
   preview.
 - Each video shows a still, what ffprobe found (duration, size, frame rate, codecs), and its
@@ -61,6 +62,21 @@ many times as the video needs (Loop, on by default; any rounding at the very end
 silence) or, with Loop off, silence fills the rest; a longer one is cut where the video ends. Either
 way, the result lasts as long as the video. The soundtrack is encoded in AAC at 192 kb/s up to stereo and 384 kb/s above (in a WebM, Opus at 160 and 320 kb/s).
 
+**Silence**: mute the audio, kept or new, for a length at the start of the result, at its end, or
+both, each in seconds or in frames (counted as they show, as for trims). The video plays on.
+
+- Lengths count on the result, once trimmed: from its first frame (for a fast cut, the keyframe it
+  starts at) and back from the end of its last one. Any audio before the first frame, or after the
+  last, is silent too.
+- The cut to silence is hard: the lengths silenced are silent throughout. The sound next to them
+  fades in or out over 5 ms, so that it does not click.
+- Silencing encodes the audio again (AAC, or Opus in a WebM, at the rates above), never the video:
+  on its own, it takes about as long as a copy. Audio tracks that ffmpeg cannot decode cannot be
+  silenced, and are left out (see [Output files](#output-files)).
+- Silences that would leave no sound are refused: remove the audio instead. A video without audio
+  has nothing to silence: it is refused, unless it is trimmed too. Silences do not apply when the
+  audio is removed.
+
 **Trim**: remove a length at the start, at the end, or both, each in seconds or in frames.
 
 - Seconds can be typed as `2`, `2.5` (or `2,5`), `1:02.5` (minutes and seconds) or `1:02:03.25`
@@ -71,8 +87,10 @@ way, the result lasts as long as the video. The soundtrack is encoded in AAC at 
   packets, without decoding. Counts are exact on variable-frame-rate videos too (phone clips, screen
   and game recordings), and frames that an edit list hides (in an MP4 or MOV cut without
   re-encoding) do not count. AVI with B-frames stores no such times: there the frame rate is used,
-  constant in AVI. Trimming the end in frames reads the whole video once before processing, and
-  trimming the start only its beginning: large files on slow drives take a moment.
+  constant in AVI. Trimming or silencing the end in frames reads the whole video once before
+  processing, and so does silencing the start in frames after a start trim in seconds; trimming or
+  silencing the start in frames reads only its beginning: large files on slow drives take a
+  moment.
 - A video whose frame rate ffprobe cannot tell can only be trimmed in seconds, and so can the end of
   one whose frames cannot be counted. A video that the trims would remove entirely is not
   processed, and the app says why.
@@ -91,8 +109,8 @@ way, the result lasts as long as the video. The soundtrack is encoded in AAC at 
   with the first frame and ends with the last, within one audio frame (about 20 ms); after a cut at
   the start of an MPEG stream (TS, M2TS, MTS, MPG), it may start slightly before the first frame.
 
-Removing or replacing the audio alone never re-encodes the video, whatever the precision: its stream
-is copied as it is. Copies of DivX and Xvid videos unpack their "packed B-frames" into standard
+Removing, replacing or silencing the audio alone never re-encodes the video, whatever the precision:
+its stream is copied as it is. Copies of DivX and Xvid videos unpack their "packed B-frames" into standard
 MPEG-4, without re-encoding.
 
 ### Exact cuts
@@ -139,6 +157,8 @@ video, and MKV otherwise, which takes whatever codec they hold. Names say what w
 | Replace the audio with `Beach waves.mp3`       | `Holiday (Beach waves).mov`          |
 | Trim                                           | `Holiday (trimmed).mov`              |
 | Remove the audio and trim                      | `Holiday (no audio, trimmed).mov`    |
+| Silence the start or the end                   | `Holiday (muted).mov`                |
+| Trim and silence                               | `Holiday (trimmed, muted).mov`       |
 | Replace the audio with `Beach waves.mp3`, trim | `Holiday (Beach waves, trimmed).mov` |
 
 A replaced audio is named by the suffix of its soundtrack: the soundtrack's file name without its
@@ -158,7 +178,9 @@ MKV, with the fonts attached for them; mov_text and DVD in MP4 and M4V; mov_text
 WebM. Other video streams, cover art, data and timecode tracks, and other attachments are left out.
 Audio tracks that ffmpeg cannot decode, such as the spatial audio (APAC) of recent iPhones, are
 copied as they are into MOV results, so an iPhone `.MOV` keeps them. MP4, MKV and WebM cannot hold
-them: those results leave them out, keep the other tracks, and the log says so.
+them: those results leave them out, keep the other tracks, and the log says so. Silencing leaves them
+out of every result, MOV included, since they cannot be silenced; a video whose audio is all of that
+kind cannot be silenced.
 
 ffmpeg writes to a partial file in the destination folder, `.<name>.partial-<id>.<ext>` (hidden on
 macOS and Linux), which gets its final name only once complete. It is deleted when the video fails,

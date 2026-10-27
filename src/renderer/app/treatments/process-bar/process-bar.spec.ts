@@ -66,7 +66,7 @@ describe('ProcessBar', () => {
   it('says why it cannot process, and keeps the focus where it is', async () => {
     await recipe({ audio: 'keep' });
     expect(unavailable()).toBe(true);
-    expect(reason()).toBe('Choose what to do: remove or replace the audio, or trim.');
+    expect(reason()).toBe('Choose what to do: remove or replace the audio, silence or trim.');
     expect(button().getAttribute('aria-describedby')).toBe('process-reason');
     button().click();
     await render();
@@ -80,10 +80,17 @@ describe('ProcessBar', () => {
     expect(reason()).toBe('gone.mp3 is missing: it was moved or deleted.');
 
     await recipe({ audio: 'remove' });
-    settings.setTrimValidity('trimEnd', false);
+    settings.setLengthValidity('trimEnd', false);
     await render();
     expect(reason()).toBe('Enter a valid length to trim.');
-    settings.setTrimValidity('trimEnd', true);
+    settings.setLengthValidity('trimEnd', true);
+
+    await recipe({ audio: 'keep', silenceEnd: { amount: 1, unit: 'seconds' } });
+    settings.setLengthValidity('silenceStart', false);
+    await render();
+    expect(reason()).toBe('Enter a valid length to silence.');
+    settings.setLengthValidity('silenceStart', true);
+    await recipe({ audio: 'remove', silenceEnd: { amount: 0, unit: 'seconds' } });
 
     await settings.setOutput({ location: 'folder', folder: null });
     await render();

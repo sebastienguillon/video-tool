@@ -70,7 +70,10 @@ function fields(value: unknown): Readonly<Record<string, unknown>> {
   return isRecord(value) ? value : {};
 }
 
-/** A length to remove: a finite, non-negative amount, and a whole number of frames. Else none. */
+/**
+ * A length to trim or to silence: a finite, non-negative amount, and a whole number of frames. Else
+ * none.
+ */
 export function sanitizeTrim(value: unknown): Trim {
   const { amount, unit } = fields(value);
   if (!isTrimUnit(unit)) {
@@ -87,13 +90,17 @@ export function sanitizeTrim(value: unknown): Trim {
 
 /** Field by field: what is not valid takes its default value. */
 export function sanitizeRecipe(value: unknown): Recipe {
-  const { audio, trackId, loop, trimStart, trimEnd, precision } = fields(value);
+  const { audio, trackId, loop, trimStart, trimEnd, silenceStart, silenceEnd, precision } =
+    fields(value);
   return {
     audio: isAudioMode(audio) ? audio : DEFAULT_RECIPE.audio,
     trackId: typeof trackId === 'string' && trackId !== '' ? trackId : null,
     loop: typeof loop === 'boolean' ? loop : DEFAULT_RECIPE.loop,
     trimStart: sanitizeTrim(trimStart),
     trimEnd: sanitizeTrim(trimEnd),
+    // Missing from the settings of earlier versions.
+    silenceStart: sanitizeTrim(silenceStart),
+    silenceEnd: sanitizeTrim(silenceEnd),
     precision: isCutPrecision(precision) ? precision : DEFAULT_RECIPE.precision,
   };
 }

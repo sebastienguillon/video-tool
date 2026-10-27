@@ -1,0 +1,8 @@
+.fields {
+  display: grid;
+  gap: 12px;
+}
+
+.fields + .hint {
+  margin-top: 10px;
+}
